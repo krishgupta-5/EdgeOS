@@ -1,5 +1,5 @@
 {
-  "name": "ai-os-builder",
+  "name": "edgeos-builder",
   "version": "0.1.0",
   "private": true,
   "scripts": {
