@@ -103,7 +103,7 @@ The application generates three key configuration files:
 
 ### Supported Devices
 - **Raspberry Pi 4**: Lightweight IoT and audio applications
-- **Intel NUC (OpenVINO)**: Financial analytics and industrial applications
+- **Intel NUC**: Financial analytics and industrial applications
 - **Jetson Nano**: Video AI ≤30 FPS
 - **Jetson Orin**: Video AI >30 FPS and multi-model deployments
 - **GPU Server**: Heavy workloads and cloud offloading
@@ -120,7 +120,7 @@ The application generates three key configuration files:
 ## 🐳 Docker Integration
 
 The application generates production-ready Docker Compose files including:
-- Optimized inference containers (TensorRT, OpenVINO, ONNX Runtime)
+- Optimized inference containers (TensorRT, ONNX Runtime)
 - RTSP streaming servers for video applications
 - MQTT brokers for IoT communications
 - Grafana dashboards for monitoring

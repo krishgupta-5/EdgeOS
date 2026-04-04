@@ -66,7 +66,7 @@ hardware:
 models:
   - name:       <exact model id, e.g. yolov8n>
     task:       <detection | classification | segmentation | tracking | nlp | asr | anomaly-detection>
-    framework:  <onnx | tflite | tensorrt | openvino | pytorch>
+    framework:  <onnx | tflite | tensorrt | pytorch>
     precision:  <fp32 | fp16 | int8>
     input_size: <e.g. 640x640 | 224x224>
     fps_target: <integer, e.g. 30>
@@ -75,10 +75,10 @@ models:
 DEVICE RULES
 ════════════════════════════
 lightweight / IoT / audio / NLP  → raspberry-pi-4   (accelerator: cpu)
-financial / analytics / NLP      → intel-nuc-openvino (accelerator: npu)
+financial / analytics / NLP      → intel-nuc (accelerator: npu)
 video AI ≤30 FPS                 → jetson-nano       (accelerator: gpu)
 video AI >30 FPS / multi-model   → jetson-orin       (accelerator: gpu)
-industrial / ONNX                → intel-nuc-openvino (accelerator: npu)
+industrial / ONNX                → intel-nuc (accelerator: npu)
 heavy / cloud offload            → gpu-server        (accelerator: gpu)
 
 RULES:
@@ -115,7 +115,7 @@ REAL IMAGE REFERENCE
 ════════════════════════════
 YOLOv8 on Jetson:    ultralytics/ultralytics:latest-jetson
 YOLOv8 general:      ultralytics/ultralytics:latest
-OpenVINO / NUC:      openvino/ubuntu20_runtime:latest
+Intel NUC:            ubuntu20_runtime:latest
 TensorRT:            nvcr.io/nvidia/tensorrt:23.10-py3
 ONNX Runtime:        mcr.microsoft.com/onnxruntime/server:latest
 RTSP stream:         aler9/rtsp-simple-server:latest
@@ -309,8 +309,8 @@ function buildFallbackDocker(device: string | null, isGPU: boolean, useCase: str
 
   const inferenceImage = device?.includes("jetson")
     ? "ultralytics/ultralytics:latest-jetson"
-    : device?.includes("openvino")
-    ? "openvino/ubuntu20_runtime:latest"
+    : device?.includes("nuc")
+    ? "ubuntu20_runtime:latest"
     : "mcr.microsoft.com/onnxruntime/server:latest";
 
   const gpuBlock = isGPU

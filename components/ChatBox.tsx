@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 type Message = { role: "user" | "ai"; text: string };
-type Props = { onGenerate: (yaml: string, docker?: string, device?: string) => void; initialPrompt?: string; };
+type Props = { onGenerate: (yaml: string, docker?: string, device?: string, pipeline?: string, pipelineFlow?: string) => void; initialPrompt?: string; };
 
 export default function ChatBox({ onGenerate, initialPrompt }: Props) {
   const [messages, setMessages] = useState<Message[]>([{ role: "ai", text: "Welcome to EdgeOS Builder. Describe your system constraints and goals." }]);
@@ -26,7 +26,7 @@ export default function ChatBox({ onGenerate, initialPrompt }: Props) {
         body: JSON.stringify({ prompt }),
       });
       const data = await res.json();
-      onGenerate(data.yaml, data.docker, data.recommendedDevice);
+      onGenerate(data.yaml, data.docker, data.recommendedDevice, data.pipeline, data.pipelineFlow);
       setMessages((prev) => [...prev, { role: "ai", text: "Configuration generated successfully. See workspace." }]);
     } catch (err) {
       setMessages((prev) => [...prev, { role: "ai", text: "Error generating config." }]);

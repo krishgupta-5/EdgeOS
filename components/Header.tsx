@@ -13,7 +13,7 @@ export default function Header() {
             EdgeOS Builder
           </h1>
           <p className="text-[11px] font-medium text-slate-500 mt-0.5">
-            Powered by OpenVINO & LLMs
+            AI-Assisted Edge Configuration
           </p>
         </div>
         <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase tracking-wider">

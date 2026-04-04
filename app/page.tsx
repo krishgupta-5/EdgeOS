@@ -7,7 +7,7 @@ import YamlViewer from "@/components/YamlViewer";
 import ChatBox from "@/components/ChatBox";
 
 export default function Home() {
-  const [result, setResult] = useState({ yaml: "", docker: "", recommendedDevice: "" });
+  const [result, setResult] = useState({ yaml: "", docker: "", recommendedDevice: "", pipeline: "", pipelineFlow: "" });
   const [templatePrompt, setTemplatePrompt] = useState<string>();
 
   const handleTemplate = async (prompt: string) => {
@@ -19,12 +19,12 @@ export default function Home() {
         body: JSON.stringify({ prompt }),
       });
       const data = await res.json();
-      setResult({ yaml: data.yaml, docker: data.docker || "", recommendedDevice: data.recommendedDevice || "" });
+      setResult({ yaml: data.yaml, docker: data.docker || "", recommendedDevice: data.recommendedDevice || "", pipeline: data.pipeline || "", pipelineFlow: data.pipelineFlow || "" });
     } catch (err) { console.error(err); }
   };
 
-  const handleGenerate = (yaml: string, docker?: string, device?: string) => {
-    setResult({ yaml, docker: docker || "", recommendedDevice: device || "" });
+  const handleGenerate = (yaml: string, docker?: string, device?: string, pipeline?: string, pipelineFlow?: string) => {
+    setResult({ yaml, docker: docker || "", recommendedDevice: device || "", pipeline: pipeline || "", pipelineFlow: pipelineFlow || "" });
   };
 
   return (
