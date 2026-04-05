@@ -35,7 +35,7 @@ export function HeroContent() {
 
             <a
               href="/features"
-              className="bg-[#F04D26] hover:bg-[#F04D26]/90 text-white rounded-[12px] px-4 py-2 text-sm font-medium transition"
+              className="bg-[#8B5CF6] hover:bg-[#A78BFA]/90 text-white rounded-[12px] px-4 py-2 text-sm font-medium transition"
             >
               See Features →
             </a>
