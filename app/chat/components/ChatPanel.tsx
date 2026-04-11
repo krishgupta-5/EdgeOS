@@ -532,7 +532,7 @@ export default function ChatPanel({ agentName, onToggleSidebar, isSidebarOpen = 
 
       {messages.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 5, padding: '0 20px', width: '100%' }}>
-          <h1 style={{ fontSize: '32px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px', letterSpacing: '-0.02em', opacity: 0.9 }}>Ready when you are.</h1>
+          <h1 style={{ fontSize: '32px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px', letterSpacing: '-0.02em', opacity: 0.9 }}>Ready when you are...</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '15px', marginBottom: '40px', fontWeight: 400 }}>Describe your system and I'll generate the full config stack.</p>
 
           <div style={{ width: '100%', maxWidth: '750px', position: 'relative' }}>
