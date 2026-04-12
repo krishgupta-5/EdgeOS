@@ -1,7 +1,9 @@
 'use client';
 
-import React from 'react';
-import { Plus, Settings, User, DollarSign } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Settings, User, DollarSign, LogOut, MessageSquare } from 'lucide-react';
+import { useUser, SignOutButton } from '@clerk/nextjs';
+import { resetSessionId } from '@/app/api/generate/Sessionid';
 
 interface SidebarProps {
   activeAgentId: string;
@@ -10,6 +12,41 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeAgentId, onSelectAgent, isOpen }: SidebarProps) {
+  const { user } = useUser();
+  const [userSessions, setUserSessions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  const displayName = user?.firstName
+    ? `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`
+    : user?.emailAddresses?.[0]?.emailAddress ?? 'Account';
+
+  useEffect(() => {
+    if (isOpen && user) {
+      fetchUserSessions();
+    }
+  }, [isOpen, user]);
+
+  const fetchUserSessions = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/sessions');
+      if (response.ok) {
+        const data = await response.json();
+        setUserSessions(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    // Generate new session ID and navigate to it
+    const newSessionId = resetSessionId();
+    window.location.href = `/chat/${newSessionId}`;
+  };
+
   // Shared styles for bottom navigation buttons
   const navButtonStyle: React.CSSProperties = {
     width: '100%',
@@ -58,6 +95,7 @@ export default function Sidebar({ activeAgentId, onSelectAgent, isOpen }: Sideba
       {/* Action Header */}
       <div style={{ padding: '20px 16px 12px' }}>
         <button
+          onClick={handleNewChat}
           style={{
             width: '100%',
             padding: '10px 12px',
@@ -89,13 +127,29 @@ export default function Sidebar({ activeAgentId, onSelectAgent, isOpen }: Sideba
 
       {/* Scrollable History */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px' }}>
-        <div style={sectionLabelStyle}>Today</div>
-        <HistoryItem title="Refining Edge-OS Interface" active />
-        <HistoryItem title="External Meeting Prep Rules" />
-
-        <div style={sectionLabelStyle}>Previous 7 Days</div>
-        <HistoryItem title="Market Research Analysis" />
-        <HistoryItem title="Email Drafter Lines" />
+        {loading ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Loading history...
+          </div>
+        ) : userSessions.length > 0 ? (
+          <>
+            <div style={sectionLabelStyle}>Recent Chats</div>
+            {userSessions.map((session) => (
+              <HistoryItem
+                key={session.sessionId}
+                sessionId={session.sessionId}
+                title={session.lastMessage || `Chat with ${session.messageCount} messages`}
+                timestamp={session.updatedAt}
+              />
+            ))}
+          </>
+        ) : (
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <MessageSquare size={24} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+            <div style={{ fontSize: '13px' }}>No chat history yet</div>
+            <div style={{ fontSize: '11px', marginTop: '4px' }}>Start a new conversation to see it here</div>
+          </div>
+        )}
       </div>
 
       {/* Footer Nav */}
@@ -152,15 +206,62 @@ export default function Sidebar({ activeAgentId, onSelectAgent, isOpen }: Sideba
           }}
         >
           <User size={18} strokeWidth={2} />
-          John Doe
+          {displayName}
         </button>
+
+        <SignOutButton>
+          <button 
+            style={{
+              ...navButtonStyle,
+              color: 'var(--text-muted)',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255,60,60,0.08)';
+              e.currentTarget.style.color = '#ff6b6b';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }}
+          >
+            <LogOut size={18} strokeWidth={2} />
+            Sign out
+          </button>
+        </SignOutButton>
       </div>
     </aside>
   );
 }
 
 // Sub-component for history items to keep code clean
-function HistoryItem({ title, active = false }: { title: string; active?: boolean }) {
+function HistoryItem({ 
+  sessionId, 
+  title, 
+  timestamp, 
+  active = false 
+}: { 
+  sessionId: string; 
+  title: string; 
+  timestamp: Date | string; 
+  active?: boolean 
+}) {
+  const formatDate = (date: Date | string) => {
+    const now = new Date();
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    const diffTime = Math.abs(now.getTime() - dateObj.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return 'Today';
+    if (diffDays === 2) return 'Yesterday';
+    if (diffDays <= 7) return `${diffDays - 1} days ago`;
+    return dateObj.toLocaleDateString();
+  };
+
+  const truncateText = (text: string, maxLength: number = 50) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  };
+
   return (
     <button
       style={{
@@ -191,8 +292,17 @@ function HistoryItem({ title, active = false }: { title: string; active?: boolea
           e.currentTarget.style.color = 'var(--text-secondary)';
         }
       }}
+      onClick={() => {
+        // Navigate to session URL
+        window.location.href = `/chat/${sessionId}`;
+      }}
     >
-      {title}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <div>{truncateText(title)}</div>
+        <div style={{ fontSize: '11px', opacity: 0.7 }}>
+          {formatDate(timestamp)}
+        </div>
+      </div>
     </button>
   );
 }

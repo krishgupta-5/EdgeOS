@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
-import { PanelLeft, Search, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { PanelLeft, Search, User, X } from 'lucide-react';
+import { useUser } from '@clerk/nextjs';
 
 interface SidebarRailProps {
   onToggleMainSidebar: () => void;
@@ -9,6 +10,8 @@ interface SidebarRailProps {
 }
 
 export default function SidebarRail({ onToggleMainSidebar, isMainSidebarOpen }: SidebarRailProps) {
+  const [showProfile, setShowProfile] = useState(false);
+  const { user } = useUser();
   // Shared icon button style for a unified look
   const railButtonStyle: React.CSSProperties = {
     width: '42px',
@@ -101,6 +104,7 @@ export default function SidebarRail({ onToggleMainSidebar, isMainSidebarOpen }: 
         {!isMainSidebarOpen && (
           <button 
             title="Profile"
+            onClick={() => setShowProfile(true)}
             style={{
               ...railButtonStyle,
               width: '40px',
@@ -125,6 +129,100 @@ export default function SidebarRail({ onToggleMainSidebar, isMainSidebarOpen }: 
           </button>
         )}
       </div>
+      
+      {/* Profile Modal */}
+      {showProfile && user && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+            boxSizing: 'border-box',
+          }}
+          onClick={() => setShowProfile(false)}
+        >
+          <div 
+            style={{
+              background: 'rgba(20, 20, 20, 0.95)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '16px',
+              padding: '24px',
+              minWidth: '320px',
+              maxWidth: '400px',
+              marginLeft: '380px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '18px', fontWeight: '600' }}>Profile</h3>
+              <button
+                onClick={() => setShowProfile(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+              <div style={{
+                width: '60px',
+                height: '60px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontSize: '20px',
+                fontWeight: '600',
+              }}>
+                {user.firstName?.[0] || user.emailAddresses[0]?.emailAddress[0]?.toUpperCase() || 'U'}
+              </div>
+              <div>
+                <div style={{ color: '#fff', fontSize: '16px', fontWeight: '500', marginBottom: '4px' }}>
+                  {user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.emailAddresses[0]?.emailAddress}
+                </div>
+                {user.firstName && user.emailAddresses[0] && (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                    {user.emailAddresses[0].emailAddress}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>User ID</span>
+                <span style={{ color: '#fff', fontSize: '14px', fontFamily: 'monospace' }}>
+                  {user.id.slice(0, 8)}...
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Last Sign In</span>
+                <span style={{ color: '#fff', fontSize: '14px' }}>
+                  {new Date(user.lastSignInAt!).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
