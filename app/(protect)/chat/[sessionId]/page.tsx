@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import ChatPanel from '../components/ChatPanel';
-import SidebarRail from '../components/SidebarRail';
+// SidebarRail component was removed as requested
 import { useParams } from 'next/navigation';
 
 const agentNames: Record<string, string> = {
@@ -39,11 +39,7 @@ export default function ChatSession() {
                     isOpen={isSidebarOpen}
                 />
 
-                <SidebarRail
-                    onToggleMainSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-                    isMainSidebarOpen={isSidebarOpen}
-                />
-
+                
                 <ChatPanel
                     agentName={agentNames[activeAgentId]}
                     onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}

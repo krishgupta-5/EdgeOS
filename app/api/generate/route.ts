@@ -739,7 +739,7 @@ async function callN8nDbDesign(
 
     if (!res.ok) {
       log.error("n8n webhook error", { status: res.status, body: await res.text() });
-      return await fallbackToTestSchema();
+      return generateFallbackDbSchema(stackSummary);
     }
 
     const text = await res.text();

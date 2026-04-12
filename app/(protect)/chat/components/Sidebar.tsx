@@ -12,7 +12,7 @@ interface SidebarProps {
   onToggle?: () => void;
 }
 
-export default function Sidebar({ activeAgentId, onSelectAgent, isOpen }: SidebarProps) {
+export default function Sidebar({ activeAgentId, onSelectAgent, isOpen, onToggle }: SidebarProps) {
   const { user } = useUser();
   const [userSessions, setUserSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
