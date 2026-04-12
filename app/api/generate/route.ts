@@ -27,6 +27,10 @@
 
 import { NextResponse } from "next/server";
 import YAML from "yaml";
+import { auth } from "@clerk/nextjs/server";
+import { memoryStore } from "@/lib/memory-store";
+import { db } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 // ─────────────────────────────────────────────
 // Constants
@@ -40,6 +44,8 @@ const PROMPT_MAX_LEN     = 2000;
 const PROMPT_MIN_LEN     = 5;
 const REQUEST_TIMEOUT_MS = 30_000;
 const N8N_TIMEOUT_MS = 45_000;
+
+console.log("PROJECT ID:", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
 
 // Per-artifact token budgets
 // docker raised to 1200 to prevent truncation on healthcheck/volumes blocks
@@ -483,22 +489,224 @@ function errorResponse(error: string, code: string, status: number): NextRespons
 }
 
 // ─────────────────────────────────────────────
-// Fallback function for test schema
+// Message storage functions
 // ─────────────────────────────────────────────
-async function fallbackToTestSchema(): Promise<DbSchema | null> {
-  log.warn("Falling back to test DB schema");
+async function saveUserMessage(sessionId: string, userId: string, content: string) {
   try {
-    const fs = await import('fs');
-    const path = await import('path');
-    const testSchemaPath = path.join(process.cwd(), 'test-db-schema.mmd');
-    const testSchemaContent = fs.readFileSync(testSchemaPath, 'utf-8');
+    await db
+      .collection("sessions")
+      .doc(sessionId)
+      .collection("messages")
+      .add({
+        role: "user",
+        content,
+        userId,
+        createdAt: new Date(),
+      });
+  } catch (error) {
+    log.error("Failed to save user message", { error: String(error), sessionId });
+    throw error;
+  }
+}
+
+async function saveAssistantMessage(sessionId: string, userId: string, content: string) {
+  try {
+    await db
+      .collection("sessions")
+      .doc(sessionId)
+      .collection("messages")
+      .add({
+        role: "assistant",
+        content,
+        userId,
+        createdAt: new Date(),
+      });
+  } catch (error) {
+    log.error("Failed to save assistant message", { error: String(error), sessionId });
+    throw error;
+  }
+}
+
+async function saveArtifact(sessionId: string, userId: string, type: string, content: string) {
+  try {
+    await db
+      .collection("sessions")
+      .doc(sessionId)
+      .collection("artifacts")
+      .add({
+        type,
+        content,
+        userId,
+        createdAt: new Date(),
+      });
+  } catch (error) {
+    log.error("Failed to save artifact", { error: String(error), sessionId, type });
+    throw error;
+  }
+}
+
+async function saveSessionMetadata(sessionId: string, userId: string) {
+  try {
+    await db
+      .collection("sessions")
+      .doc(sessionId)
+      .set({
+        userId,
+        updatedAt: new Date(),
+      }, { merge: true });
+  } catch (error) {
+    log.error("Failed to save session metadata", { error: String(error), sessionId });
+    throw error;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Fallback DB Schema Generator
+// ─────────────────────────────────────────────
+function generateFallbackDbSchema(stackSummary: string): DbSchema | null {
+  try {
+    // Parse basic info from stack summary
+    const dbType = stackSummary.includes('postgresql') ? 'PostgreSQL' : 
+                   stackSummary.includes('mongodb') ? 'MongoDB' : 
+                   stackSummary.includes('mysql') ? 'MySQL' : 'SQL Database';
     
-    return {
-      mermaid: testSchemaContent,
-      diagram: "" // No diagram available from test file
-    };
+    const isSaaS = stackSummary.includes('saas');
+    const hasAuth = stackSummary.includes('jwt') || stackSummary.includes('auth');
+    
+    // Generate a basic ER diagram based on common patterns
+    let mermaid = `erDiagram
+    USERS {
+        uuid id PK
+        string email UK
+        string password_hash
+        string first_name
+        string last_name
+        timestamp created_at
+        timestamp updated_at
+    }`;
+
+    if (isSaaS) {
+      mermaid += `
+    TENANTS {
+        uuid id PK
+        string name
+        string slug UK
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    USER_TENANTS {
+        uuid user_id FK
+        uuid tenant_id FK
+        string role
+        timestamp created_at
+    }`;
+    }
+
+    mermaid += `
+    PROJECTS {
+        uuid id PK
+        string name
+        text description
+        uuid owner_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    TASKS {
+        uuid id PK
+        string title
+        text description
+        string status
+        uuid project_id FK
+        uuid assigned_to FK
+        timestamp due_date
+        timestamp created_at
+        timestamp updated_at
+    }`;
+
+    if (isSaaS) {
+      mermaid += `
+    
+    USERS ||--o{ USER_TENANTS : belongs_to
+    TENANTS ||--o{ USER_TENANTS : has
+    TENANTS ||--o{ PROJECTS : owns
+    USERS ||--o{ PROJECTS : owns
+    PROJECTS ||--o{ TASKS : contains
+    USERS ||--o{ TASKS : assigned_to`;
+    } else {
+      mermaid += `
+    
+    USERS ||--o{ PROJECTS : owns
+    PROJECTS ||--o{ TASKS : contains
+    USERS ||--o{ TASKS : assigned_to`;
+    }
+
+    const diagram = `# Database Schema (${dbType})
+
+## Entity Relationship Diagram
+
+${mermaid}
+
+## Table Descriptions
+
+### Users
+- **id**: Primary key (UUID)
+- **email**: User email (unique)
+- **password_hash**: Encrypted password
+- **first_name**: User's first name
+- **last_name**: User's last name
+- **created_at**: Account creation timestamp
+- **updated_at**: Last update timestamp
+
+${isSaaS ? `### Tenants
+- **id**: Primary key (UUID)
+- **name**: Organization name
+- **slug**: URL-friendly identifier (unique)
+- **created_at**: Tenant creation timestamp
+- **updated_at**: Last update timestamp
+
+### User_Tenants
+- **user_id**: Foreign key to Users
+- **tenant_id**: Foreign key to Tenants
+- **role**: User role in tenant (owner, admin, member)
+- **created_at**: Association timestamp
+
+` : ''}### Projects
+- **id**: Primary key (UUID)
+- **name**: Project name
+- **description**: Project description
+- **owner_id**: Foreign key to Users (or Tenants for SaaS)
+- **created_at**: Project creation timestamp
+- **updated_at**: Last update timestamp
+
+### Tasks
+- **id**: Primary key (UUID)
+- **title**: Task title
+- **description**: Task description
+- **status**: Task status (todo, in_progress, done)
+- **project_id**: Foreign key to Projects
+- **assigned_to**: Foreign key to Users
+- **due_date**: Task due date
+- **created_at**: Task creation timestamp
+- **updated_at**: Last update timestamp
+
+## Relationships
+
+${isSaaS ? `- Users belong to multiple Tenants through User_Tenants
+- Tenants have multiple Users through User_Tenants
+- Tenants own multiple Projects
+- Users own multiple Projects
+- Projects contain multiple Tasks
+- Users are assigned to multiple Tasks` : `- Users own multiple Projects
+- Projects contain multiple Tasks
+- Users are assigned to multiple Tasks`}`;
+
+    log.info("Generated fallback DB schema", { dbType, isSaaS });
+    
+    return { mermaid, diagram };
   } catch (err) {
-    log.error("Failed to read test schema file", { err: String(err) });
+    log.error("Failed to generate fallback DB schema", { err: String(err) });
     return null;
   }
 }
@@ -513,22 +721,8 @@ async function callN8nDbDesign(
   const webhookUrl = process.env.N8N_WEBHOOK_URL;
   log.info("Webhook URL check", { webhookUrl: webhookUrl ? "SET" : "NOT_SET", url: webhookUrl || "" });
   if (!webhookUrl) {
-    log.warn("N8N_WEBHOOK_URL not set — using test DB schema");
-    // Fallback to test schema when webhook is not configured
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const testSchemaPath = path.join(process.cwd(), 'test-db-schema.mmd');
-      const testSchemaContent = fs.readFileSync(testSchemaPath, 'utf-8');
-      
-      return {
-        mermaid: testSchemaContent,
-        diagram: "" // No diagram available from test file
-      };
-    } catch (err) {
-      log.error("Failed to read test schema file", { err: String(err) });
-      return null;
-    }
+    log.warn("N8N_WEBHOOK_URL not set - using fallback DB design");
+    return generateFallbackDbSchema(stackSummary);
   }
 
   try {
@@ -557,7 +751,8 @@ async function callN8nDbDesign(
       data = JSON.parse(cleanText);
     } catch {
       log.error("n8n response is not JSON", { preview: cleanText.slice(0, 200) });
-      return await fallbackToTestSchema();
+      // Fallback: generate a basic DB schema based on the stack summary
+      return generateFallbackDbSchema(stackSummary);
     }
 
     const payload = Array.isArray(data) ? data[0] : data;
@@ -579,7 +774,7 @@ async function callN8nDbDesign(
 
     if (!mermaid && !diagram) {
       log.warn("n8n returned empty DB schema payload", { payload });
-      return null;
+      return generateFallbackDbSchema(stackSummary);
     }
 
     log.info("n8n DB schema received", { hasMermaid: !!mermaid, hasDiagram: !!diagram });
@@ -587,7 +782,8 @@ async function callN8nDbDesign(
 
   } catch (err) {
     log.error("n8n call failed", { err: String(err) });
-    return null;
+    // Fallback: generate a basic DB schema based on the stack summary
+    return generateFallbackDbSchema(stackSummary);
   }
 }
 
@@ -679,6 +875,12 @@ async function callGroq(
 export async function POST(req: Request) {
   try {
 
+    // ── 0. Authentication ─────────────────────────────────────────────────────
+    const { userId } = await auth();
+    if (!userId) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
     // ── 1. Parse & validate ──────────────────────────────────────────────────
     let body: {
       prompt?:    unknown;
@@ -705,6 +907,15 @@ export async function POST(req: Request) {
         400
       );
     }
+
+    // Save user message to Firestore and memory store
+    await saveUserMessage(sessionId, userId, prompt);
+    await memoryStore.addMessage(sessionId, {
+      role: 'user',
+      content: prompt,
+      userId
+    });
+    await memoryStore.updateSession(sessionId, { userId });
 
     // ── 2. API key ───────────────────────────────────────────────────────────
     const apiKey = process.env.GROQ_API_KEY;
@@ -795,6 +1006,58 @@ export async function POST(req: Request) {
       session.cache.delete(cacheKey);
       session.lastResult = result;
 
+      // Save assistant response to Firestore and memory store
+      await saveAssistantMessage(sessionId, userId, JSON.stringify(result));
+      await memoryStore.addMessage(sessionId, {
+        role: 'assistant',
+        content: JSON.stringify(result),
+        userId
+      });
+
+      // Save complete generation result as a single artifact for history loading
+      await saveArtifact(sessionId, userId, "complete_result", JSON.stringify(result));
+      await memoryStore.addArtifact(sessionId, {
+        type: "complete_result",
+        content: JSON.stringify(result),
+        userId
+      });
+
+      // Also save individual artifacts for direct access
+      await saveArtifact(sessionId, userId, "config", yaml);
+      await memoryStore.addArtifact(sessionId, {
+        type: "config",
+        content: yaml,
+        userId
+      });
+      if (docker) {
+        await saveArtifact(sessionId, userId, "docker", docker);
+        await memoryStore.addArtifact(sessionId, {
+          type: "docker",
+          content: docker,
+          userId
+        });
+      }
+      if (pipeline) {
+        await saveArtifact(sessionId, userId, "pipeline", pipeline);
+        await memoryStore.addArtifact(sessionId, {
+          type: "pipeline",
+          content: pipeline,
+          userId
+        });
+      }
+      if (markdown) {
+        await saveArtifact(sessionId, userId, "docs", markdown);
+        await memoryStore.addArtifact(sessionId, {
+          type: "docs",
+          content: markdown,
+          userId
+        });
+      }
+
+      // Save session metadata
+      await saveSessionMetadata(sessionId, userId);
+      await memoryStore.updateSession(sessionId, { userId });
+
       return secureHeaders(NextResponse.json(result));
     }
 
@@ -853,6 +1116,52 @@ export async function POST(req: Request) {
 
     session.cache.set(cacheKey, result);
     session.lastResult = result;
+
+    // Save assistant response to Firestore and memory store
+    await saveAssistantMessage(sessionId, userId, JSON.stringify(result));
+    await memoryStore.addMessage(sessionId, {
+      role: 'assistant',
+      content: JSON.stringify(result),
+      userId
+    });
+
+    // Save complete generation result as a single artifact for history loading
+    await saveArtifact(sessionId, userId, "complete_result", JSON.stringify(result));
+    await memoryStore.addArtifact(sessionId, {
+      type: "complete_result",
+      content: JSON.stringify(result),
+      userId
+    });
+
+    // Also save individual artifacts for direct access
+    await saveArtifact(sessionId, userId, "config", yaml);
+    await memoryStore.addArtifact(sessionId, {
+      type: "config",
+      content: yaml,
+      userId
+    });
+    await saveArtifact(sessionId, userId, "docker", docker);
+    await memoryStore.addArtifact(sessionId, {
+      type: "docker",
+      content: docker,
+      userId
+    });
+    await saveArtifact(sessionId, userId, "pipeline", pipeline);
+    await memoryStore.addArtifact(sessionId, {
+      type: "pipeline",
+      content: pipeline,
+      userId
+    });
+    await saveArtifact(sessionId, userId, "docs", markdown);
+    await memoryStore.addArtifact(sessionId, {
+      type: "docs",
+      content: markdown,
+      userId
+    });
+
+    // Save session metadata
+    await saveSessionMetadata(sessionId, userId);
+    await memoryStore.updateSession(sessionId, { userId });
 
     return secureHeaders(NextResponse.json(result));
 

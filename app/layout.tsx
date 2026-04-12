@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EdgeOS",
-  description: "EdgeOS - The Ultimate AI-Powered Edge Computing Platform",
+  title: "AI OS Builder",
+  description: "Build custom OS images for Intel Edge AI Suites with AI assistance",
 };
 
 export default function RootLayout({
@@ -27,7 +29,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <ClerkProvider appearance={{ baseTheme: dark }}>
+          {children}
+        </ClerkProvider>
+      </body>
     </html>
   );
 }

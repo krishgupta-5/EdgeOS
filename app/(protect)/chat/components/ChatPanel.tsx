@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { getSessionId } from "@/app/api/generate/Sessionid";
-import DbSchemaViewer from "@/app/chat/components/DbSchemaViewer";
-import PipelineViewer from "@/app/chat/components/PipelineViewer";
+import React, { useState, useRef, useEffect } from 'react';
+import { getSessionId } from '@/app/api/generate/Sessionid';
+import DbSchemaViewer from '@/app/(protect)/chat/components/DbSchemaViewer';
+import PipelineViewer from '@/app/(protect)/chat/components/PipelineViewer';
+import { UserButton, useUser } from '@clerk/nextjs';
 
 export interface Message {
   id: string;
@@ -29,6 +30,7 @@ interface ChatPanelProps {
   agentName: string;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
+  sessionId?: string;
 }
 
 type Step = "config" | "docker" | "pipeline" | "docs" | "db";
@@ -151,20 +153,12 @@ function LanguageBadge({ language }: { language: string }) {
   );
 }
 
-// ─────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────
-export default function ChatPanel({
-  agentName,
-  onToggleSidebar,
-  isSidebarOpen = true,
-}: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [markdownMode, setMarkdownMode] = useState<
-    Record<string, "code" | "preview">
-  >({});
+export default function ChatPanel({ agentName, onToggleSidebar, isSidebarOpen = true, sessionId }: ChatPanelProps) {
+  const { user, isSignedIn } = useUser();
+  const [messages, setMessages]           = useState<Message[]>(initialMessages);
+  const [input, setInput]                 = useState('');
+  const [isTyping, setIsTyping]           = useState(false);
+  const [markdownMode, setMarkdownMode]   = useState<Record<string, 'code' | 'preview'>>({});
   const [generatedData, setGeneratedData] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -182,28 +176,89 @@ export default function ChatPanel({
     scrollToBottom();
   }, [messages, isTyping]);
 
+  // Load chat history on component mount
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      if (!isSignedIn) return;
+      
+      // Clear current messages when loading a new session
+      setMessages([]);
+      setGeneratedData(null);
+      setHasGeneratedConfig(false);
+      setIsModifyMode(false);
+      
+      try {
+        const currentSessionId = sessionId || getSessionId();
+        
+        // First, load messages to get the conversation flow
+        const messagesResponse = await fetch(`/api/chat-history?sessionId=${currentSessionId}`);
+        if (!messagesResponse.ok) return;
+        
+        const messagesData = await messagesResponse.json();
+        let foundCompleteResult = false;
+        let completeResultData = null;
+        
+        const historyMessages: Message[] = messagesData.messages.map((msg: any) => {
+          let content = msg.content;
+          
+          // For assistant messages, check if they contain complete result data
+          if (msg.role === 'assistant') {
+            try {
+              const parsed = JSON.parse(msg.content);
+              if (parsed.yaml || parsed.docker || parsed.pipeline || parsed.markdown) {
+                // This is a complete generation result - store it for later
+                foundCompleteResult = true;
+                completeResultData = parsed;
+                content = 'Configuration generated successfully. You can view the generated files below.';
+              }
+            } catch (e) {
+              // If it's not JSON, keep the original content
+              content = msg.content;
+            }
+          }
+          
+          return {
+            id: msg.id,
+            role: msg.role,
+            content,
+            timestamp: new Date(msg.createdAt?.toDate?.() || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        });
+        
+        setMessages(historyMessages);
+        
+        // If we found complete result data, set it now (after messages are set)
+        if (foundCompleteResult && completeResultData) {
+          setGeneratedData(completeResultData);
+          setHasGeneratedConfig(true);
+          return; // We're done - no API calls needed
+        }
+        
+        // If no complete result found in messages, try to load from artifacts
+        console.log('No complete result found in messages, checking artifacts...');
+        
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      }
+    };
+
+    loadChatHistory();
+  }, [isSignedIn, sessionId]);
+
   const detectStep = (text: string): Step => {
     const lower = text.toLowerCase();
-    if (isModifyMode) return "config";
-    if (
-      lower.includes("db schema") ||
-      lower.includes("database schema") ||
-      lower.includes("view db") ||
-      lower.includes("show db") ||
-      lower.includes("show schema")
-    )
-      return "db";
-    if (lower.includes("docker") || lower.includes("continue")) return "docker";
-    if (lower.includes("pipeline") || lower.includes("show pipeline"))
-      return "pipeline";
-    if (
-      lower.includes("docs") ||
-      lower.includes("documentation") ||
-      lower.includes("readme") ||
-      lower.includes("generate docs")
-    )
-      return "docs";
-    return "config";
+    if (isModifyMode) return 'config';
+    
+    // For initial generation (not modify mode), prioritize config step
+    // DB step should only be triggered explicitly after config is generated
+    if (hasGeneratedConfig) {
+      if (lower.includes('db schema') || lower.includes('database schema') || lower.includes('view db') || lower.includes('show db') || lower.includes('show schema')) return 'db';
+      if (lower.includes('docker') || lower.includes('continue')) return 'docker';
+      if (lower.includes('pipeline') || lower.includes('show pipeline')) return 'pipeline';
+      if (lower.includes('docs') || lower.includes('documentation') || lower.includes('readme') || lower.includes('generate docs')) return 'docs';
+    }
+    
+    return 'config';
   };
 
   const buildAssistantMessage = (
@@ -307,8 +362,8 @@ export default function ChatPanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: textToSend,
-            mode: isModifyMode ? "modify" : "generate",
-            sessionId: getSessionId(),
+            mode: isModifyMode ? 'modify' : 'generate',
+            sessionId: sessionId || getSessionId(),
           }),
         });
         if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -1054,152 +1109,30 @@ export default function ChatPanel({
           </div>
         </div>
         <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-          <div
-            style={{
-              position: "relative",
-              display: "flex",
-              alignItems: "center",
-            }}
-            onMouseEnter={() => setShowTokenInfo(true)}
-            onMouseLeave={() => setShowTokenInfo(false)}
-          >
-            <button
-              style={{
-                background: "transparent",
-                border: "none",
-                color: showTokenInfo ? "#EAEAEA" : "#A0A0A0",
-                cursor: "pointer",
-                fontSize: "11px",
-                fontFamily: '"Geist Mono", monospace',
-                padding: "4px 8px",
-                borderRadius: "2px",
-              }}
-            >
-              [ TOKENS ]
-            </button>
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                right: 0,
-                marginTop: "8px",
-                background: "#080808",
-                border: "1px solid #333",
-                padding: "16px",
-                borderRadius: "4px",
-                minWidth: "220px",
-                opacity: showTokenInfo ? 1 : 0,
-                visibility: showTokenInfo ? "visible" : "hidden",
-                transform: showTokenInfo ? "translateY(0)" : "translateY(-5px)",
-                transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-                zIndex: 50,
-                pointerEvents: "none",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "10px",
-                  color: "#A0A0A0",
-                  marginBottom: "14px",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                  fontFamily: '"Geist Mono", monospace',
-                }}
-              >
-                Session Usage
-              </div>
-              {[
-                ["Prompt:", "1,240"],
-                ["Completion:", "850"],
-              ].map(([label, val]) => (
-                <div
-                  key={label}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "#A0A0A0",
-                      fontFamily: '"Geist Mono", monospace',
-                    }}
-                  >
-                    {label}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "#EAEAEA",
-                      fontFamily: '"Geist Mono", monospace',
-                    }}
-                  >
-                    {val}
-                  </span>
-                </div>
-              ))}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: "6px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#A0A0A0",
-                    fontFamily: '"Geist Mono", monospace',
-                  }}
-                >
-                  Context:
+          {isSignedIn ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {user?.firstName && (
+                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                  {user.firstName}
                 </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#EAEAEA",
-                    fontFamily: '"Geist Mono", monospace',
-                  }}
-                >
-                  2,090 / 128k
-                </span>
-              </div>
-              <div
-                style={{
-                  width: "100%",
-                  height: "2px",
-                  background: "#333",
-                  overflow: "hidden",
+              )}
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: { width: '32px', height: '32px' },
+                  },
                 }}
-              >
-                <div
-                  style={{ width: "3%", height: "100%", background: "#EAEAEA" }}
-                />
-              </div>
+              />
             </div>
-          </div>
-          <button
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#A0A0A0",
-              cursor: "pointer",
-              fontSize: "11px",
-              fontFamily: '"Geist Mono", monospace',
-              padding: "4px 8px",
-              borderRadius: "2px",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "#EAEAEA";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "#A0A0A0";
-            }}
-          >
-            [ SETTINGS ]
-          </button>
+          ) : (
+            <button
+              onClick={() => window.location.href = '/login'}
+              style={{ padding: '8px 16px', background: 'var(--accent-primary)', color: '#000', border: 'none', borderRadius: '20px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}
+              onMouseEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.opacity = '0.9'; b.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.opacity = '1'; b.style.transform = 'translateY(0)'; }}>
+              Log in
+            </button>
+          )}
         </div>
       </div>
 
@@ -1460,60 +1393,75 @@ export default function ChatPanel({
                   </div>
                   {msg.options &&
                     msg.options.length > 0 &&
-                    msg.role === "assistant" && (
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "10px",
-                          marginTop: "24px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {msg.options.map((option, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleSend(option)}
-                            style={{
-                              padding: "8px 16px",
-                              background: "#000",
-                              border: "1px solid #333",
-                              color: "#EAEAEA",
-                              fontSize: "11px",
-                              fontFamily: '"Geist Mono", monospace',
-                              cursor: "pointer",
-                              transition: "all 0.2s ease",
-                              borderRadius: "2px",
-                              textTransform: "uppercase",
-                              fontWeight: 500,
-                            }}
-                            onMouseEnter={(e) => {
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.background = "#EAEAEA";
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.color = "#000";
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.borderColor = "#EAEAEA";
-                            }}
-                            onMouseLeave={(e) => {
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.background = "#000";
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.color = "#EAEAEA";
-                              (
-                                e.currentTarget as HTMLButtonElement
-                              ).style.borderColor = "#333";
-                            }}
-                          >
-                            {option}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    msg.role === "assistant" && (() => {
+                      // Only show option buttons on last assistant message
+                      const lastAssistantIdx = messages.reduce((acc, m, i) => m.role === 'assistant' ? i : acc, -1);
+                      const currentIdx = messages.findIndex(m => m.id === msg.id);
+                      if (currentIdx !== lastAssistantIdx) return null;
+                      return (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "10px",
+                            marginTop: "24px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {msg.options.map((option, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                if (option.toLowerCase() === 'modify') {
+                                  setIsModifyMode(true);
+                                  setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Tell me what you want to change in the configuration.', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+                                  return;
+                                }
+                                handleSend(option);
+                              }}
+                              style={{
+                                padding: "8px 16px",
+                                background: "#000",
+                                border: "1px solid #333",
+                                color: "#EAEAEA",
+                                fontSize: "11px",
+                                fontFamily: '"Geist Mono", monospace',
+                                cursor: "pointer",
+                                transition: "all 0.2s ease",
+                                borderRadius: "2px",
+                                textTransform: "uppercase",
+                                fontWeight: 500,
+                              }}
+                              onMouseEnter={(e) => {
+                                (
+                                  e.currentTarget as HTMLButtonElement
+                                ).style.background = "#EAEAEA";
+                                (
+                                  e.currentTarget as HTMLButtonElement
+                                ).style.color = "#000";
+                                (
+                                  e.currentTarget as HTMLButtonElement
+                                ).style.borderColor = "#EAEAEA";
+                              }}
+                              onMouseLeave={(e) => {
+                                (
+                                  e.currentTarget as HTMLButtonElement
+                                ).style.background = "#000";
+                                (
+                                  e.currentTarget as HTMLButtonElement
+                                ).style.color = "#EAEAEA";
+                                (
+                                  e.currentTarget as HTMLButtonElement
+                                ).style.borderColor = "#333";
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', padding: '0 4px' }}>{msg.timestamp}</span>
                 </div>
               ))}
               {isTyping && (
