@@ -365,18 +365,25 @@ export default function ChatPanel({ agentName, onToggleSidebar, isSidebarOpen = 
       let data = generatedData;
       const needsFreshData = !data || isModifyMode || step === "config";
       if (needsFreshData) {
-        const res = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: textToSend,
-            mode: isModifyMode ? 'modify' : 'generate',
-            sessionId: sessionId || getSessionId(),
-          }),
-        });
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        data = await res.json();
-        if (data.error) throw new Error(data.error);
+        let res;
+        try {
+          res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: textToSend,
+              mode: isModifyMode ? 'modify' : 'generate',
+              sessionId: sessionId || getSessionId(),
+            }),
+          });
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          data = await res.json();
+          if (data.error) throw new Error(data.error);
+        } catch (error) {
+          console.error('Failed to send message:', error);
+          setIsTyping(false);
+          return;
+        }
         setGeneratedData(data);
       }
       const isFirstConfig = !hasGeneratedConfig;

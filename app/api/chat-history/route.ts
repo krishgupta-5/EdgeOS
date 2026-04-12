@@ -19,18 +19,30 @@ export async function GET(req: Request) {
     }
 
     // Get messages from Firestore (no orderBy to avoid index requirement)
-    const messagesSnapshot = await db
-      .collection("sessions")
-      .doc(sessionId)
-      .collection("messages")
-      .get();
+    let messagesSnapshot;
+    try {
+      messagesSnapshot = await db
+        .collection("sessions")
+        .doc(sessionId)
+        .collection("messages")
+        .get();
+    } catch (error) {
+      console.error('Failed to fetch messages from Firestore:', error);
+      return NextResponse.json(
+        { error: "Database error" },
+        { status: 500 }
+      );
+    }
 
     // Convert to array and sort by createdAt in JavaScript
-    const messages = messagesSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date()
-    }));
+    const messages = messagesSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date()
+      };
+    });
 
     // Sort by createdAt ascending (oldest first)
     messages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());

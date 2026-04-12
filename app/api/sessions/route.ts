@@ -10,11 +10,20 @@ export async function GET(req: Request) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // Get user sessions from Firestore (no orderBy to avoid index requirement)
-    const sessionsSnapshot = await db
-      .collection("sessions")
-      .where("userId", "==", userId)
-      .get();
+    // Get all sessions for this user (no orderBy to avoid index requirement)
+    let sessionsSnapshot;
+    try {
+      sessionsSnapshot = await db
+        .collection("sessions")
+        .where("userId", "==", userId)
+        .get();
+    } catch (error) {
+      console.error('Failed to fetch sessions from Firestore:', error);
+      return NextResponse.json(
+        { error: "Database error" },
+        { status: 500 }
+      );
+    }
 
     const sessions = await Promise.all(
       sessionsSnapshot.docs.map(async (doc) => {

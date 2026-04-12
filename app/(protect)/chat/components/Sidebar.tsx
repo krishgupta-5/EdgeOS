@@ -34,6 +34,8 @@ export default function Sidebar({ activeAgentId, onSelectAgent, isOpen, onToggle
       if (response.ok) {
         const data = await response.json();
         setUserSessions(data.sessions || []);
+      } else {
+        console.error('Failed to fetch sessions:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
