@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useUser, SignOutButton } from "@clerk/nextjs";
 
 type Tab = "profile" | "preferences" | "api-keys" | "billing";
 
@@ -183,6 +184,25 @@ export default function SettingsPage() {
 // ─────────────────────────────────────────────
 
 function ProfileSection() {
+  const { isLoaded, isSignedIn, user } = useUser();
+
+  if (!isLoaded || !isSignedIn || !user) {
+    return (
+      <div style={{ animation: "pipFade 0.2s ease-out forwards" }}>
+        <SectionHeader
+          title="User Profile"
+          description="Loading user profile..."
+        />
+      </div>
+    );
+  }
+
+  const initials = (user.firstName?.[0] || "") + (user.lastName?.[0] || "");
+  const displayName = user.fullName || "";
+  const username = user.username ? `@${user.username}` : "";
+  const email = user.primaryEmailAddress?.emailAddress || "";
+  const imageUrl = user.imageUrl;
+
   return (
     <div style={{ animation: "pipFade 0.2s ease-out forwards" }}>
       <SectionHeader
@@ -203,52 +223,69 @@ function ProfileSection() {
       >
         {/* Avatar Area */}
         <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <div
-            style={{
-              width: "72px",
-              height: "72px",
-              background: "#050505",
-              border: "1px solid #222",
-              borderRadius: "4px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "20px",
-              fontFamily: '"Geist Mono", monospace',
-              color: "#666",
-            }}
-          >
-            SM
-          </div>
-          <div>
-            <button
+          {imageUrl ? (
+            <img 
+              src={imageUrl} 
+              alt="Avatar" 
               style={{
-                background: "transparent",
-                border: "1px solid #333",
-                color: "#A1A1AA",
-                padding: "8px 16px",
-                borderRadius: "2px",
-                fontSize: "11px",
+                width: "72px",
+                height: "72px",
+                border: "1px solid #222",
+                borderRadius: "4px",
+                objectFit: "cover",
+              }} 
+            />
+          ) : (
+            <div
+              style={{
+                width: "72px",
+                height: "72px",
+                background: "#050505",
+                border: "1px solid #222",
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
                 fontFamily: '"Geist Mono", monospace',
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#000";
-                e.currentTarget.style.background = "#EAEAEA";
-                e.currentTarget.style.borderColor = "#EAEAEA";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = "#A1A1AA";
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.borderColor = "#333";
+                color: "#666",
               }}
             >
-              Update Avatar
-            </button>
+              {initials || "U"}
+            </div>
+          )}
+          
+          <div>
+            <SignOutButton>
+              <button
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333",
+                  color: "#A1A1AA",
+                  padding: "8px 16px",
+                  borderRadius: "2px",
+                  fontSize: "11px",
+                  fontFamily: '"Geist Mono", monospace',
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#000";
+                  e.currentTarget.style.background = "#EAEAEA";
+                  e.currentTarget.style.borderColor = "#EAEAEA";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#A1A1AA";
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.borderColor = "#333";
+                }}
+              >
+                Sign Out
+              </button>
+            </SignOutButton>
             <p
               style={{
                 fontSize: "10px",
@@ -260,7 +297,7 @@ function ProfileSection() {
                 letterSpacing: "0.5px",
               }}
             >
-              JPG, GIF OR PNG. MAX 2MB.
+              LOG OUT OF YOUR ACCOUNT
             </p>
           </div>
         </div>
@@ -275,52 +312,16 @@ function ProfileSection() {
             gap: "24px",
           }}
         >
-          <InputField label="Display Name" defaultValue="Sahil Mishra" />
-          <InputField label="Username" defaultValue="@sahilmishra" />
+          <InputField label="Display Name" defaultValue={displayName} readOnly />
+          <InputField label="Username" defaultValue={username} readOnly />
           <div style={{ gridColumn: "1 / -1" }}>
             <InputField
               label="Email Address"
-              defaultValue="sahil@edge-os.dev"
+              defaultValue={email}
               type="email"
+              readOnly
             />
           </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            paddingTop: "8px",
-          }}
-        >
-          <button
-            style={{
-              background: "transparent",
-              border: "1px solid #333",
-              color: "#A1A1AA",
-              padding: "10px 24px",
-              borderRadius: "2px",
-              fontSize: "11px",
-              fontFamily: '"Geist Mono", monospace',
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "#000";
-              e.currentTarget.style.background = "#EAEAEA";
-              e.currentTarget.style.borderColor = "#EAEAEA";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "#A1A1AA";
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.borderColor = "#333";
-            }}
-          >
-            Save Changes
-          </button>
         </div>
       </div>
     </div>
@@ -436,143 +437,17 @@ function ApiKeysSection() {
 
         <div
           style={{
-            border: "1px solid #222",
+            border: "1px dashed #222",
             borderRadius: "4px",
-            overflow: "hidden",
-            background: "#050505",
+            padding: "48px 24px",
+            textAlign: "center",
+            background: "transparent",
+            color: "#666",
+            fontSize: "12px",
+            fontFamily: '"Geist Mono", monospace',
           }}
         >
-          <table
-            style={{
-              width: "100%",
-              textAlign: "left",
-              borderCollapse: "collapse",
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  background: "#0A0A0A",
-                  borderBottom: "1px solid #222",
-                }}
-              >
-                <th
-                  style={{
-                    padding: "16px",
-                    fontSize: "10px",
-                    color: "#666",
-                    fontFamily: '"Geist Mono", monospace',
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    fontWeight: "normal",
-                    borderRight: "1px solid #1A1A1A",
-                  }}
-                >
-                  Name
-                </th>
-                <th
-                  style={{
-                    padding: "16px",
-                    fontSize: "10px",
-                    color: "#666",
-                    fontFamily: '"Geist Mono", monospace',
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    fontWeight: "normal",
-                    borderRight: "1px solid #1A1A1A",
-                  }}
-                >
-                  Token
-                </th>
-                <th
-                  style={{
-                    padding: "16px",
-                    fontSize: "10px",
-                    color: "#666",
-                    fontFamily: '"Geist Mono", monospace',
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    fontWeight: "normal",
-                    textAlign: "right",
-                  }}
-                >
-                  Created
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: "1px solid #1A1A1A" }}>
-                <td
-                  style={{
-                    padding: "16px",
-                    color: "#EAEAEA",
-                    fontSize: "12px",
-                    fontFamily: '"Geist Mono", monospace',
-                    borderRight: "1px solid #1A1A1A",
-                  }}
-                >
-                  Production Server
-                </td>
-                <td
-                  style={{
-                    padding: "16px",
-                    color: "#888",
-                    fontSize: "12px",
-                    fontFamily: '"Geist Mono", monospace',
-                    borderRight: "1px solid #1A1A1A",
-                  }}
-                >
-                  edge_live_8f92...a1b2
-                </td>
-                <td
-                  style={{
-                    padding: "16px",
-                    color: "#666",
-                    fontSize: "12px",
-                    fontFamily: '"Geist Mono", monospace',
-                    textAlign: "right",
-                  }}
-                >
-                  Oct 12, 2025
-                </td>
-              </tr>
-              <tr>
-                <td
-                  style={{
-                    padding: "16px",
-                    color: "#EAEAEA",
-                    fontSize: "12px",
-                    fontFamily: '"Geist Mono", monospace',
-                    borderRight: "1px solid #1A1A1A",
-                  }}
-                >
-                  Local CLI
-                </td>
-                <td
-                  style={{
-                    padding: "16px",
-                    color: "#888",
-                    fontSize: "12px",
-                    fontFamily: '"Geist Mono", monospace',
-                    borderRight: "1px solid #1A1A1A",
-                  }}
-                >
-                  edge_dev_c4d5...e6f7
-                </td>
-                <td
-                  style={{
-                    padding: "16px",
-                    color: "#666",
-                    fontSize: "12px",
-                    fontFamily: '"Geist Mono", monospace',
-                    textAlign: "right",
-                  }}
-                >
-                  Just now
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          No active API keys found. Generate one to get started.
         </div>
       </div>
     </div>
@@ -580,6 +455,49 @@ function ApiKeysSection() {
 }
 
 function BillingSection() {
+  const [tokenData, setTokenData] = useState<{
+    tokensUsed: number;
+    tokensLimit: number;
+    resetAt?: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/token-quota")
+      .then((res) => res.json())
+      .then((data) => {
+        setTokenData(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch token quota:", err);
+        setLoading(false);
+      });
+  }, []);
+
+  const formattedTokensUsed = tokenData ? tokenData.tokensUsed.toLocaleString() : "0";
+  const formattedTokensLimit = tokenData 
+    ? (tokenData.tokensLimit >= 1000 ? `${tokenData.tokensLimit / 1000}K` : tokenData.tokensLimit.toLocaleString())
+    : "0";
+  
+  let percentage = 0;
+  if (tokenData && tokenData.tokensLimit > 0) {
+    percentage = Math.min(100, Math.round((tokenData.tokensUsed / tokenData.tokensLimit) * 100));
+  }
+
+  let resetMessage = "Usage metrics are currently unavailable";
+  if (tokenData?.resetAt) {
+    const diffMs = Math.max(0, tokenData.resetAt - Date.now());
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      resetMessage = `Resets in ${days} days`;
+    } else {
+      resetMessage = `Resets in ${hours}h ${minutes}m`;
+    }
+  }
+
   return (
     <div style={{ animation: "pipFade 0.2s ease-out forwards" }}>
       <SectionHeader
@@ -628,7 +546,7 @@ function BillingSection() {
               marginBottom: "8px",
             }}
           >
-            ARCHITECT PRO
+            FREE TIER
           </div>
           <div
             style={{
@@ -638,7 +556,7 @@ function BillingSection() {
               marginBottom: "32px",
             }}
           >
-            $49.00 / MONTH
+            $0.00 / MONTH
           </div>
           <div style={{ marginTop: "auto" }}>
             <button
@@ -668,7 +586,7 @@ function BillingSection() {
                 e.currentTarget.style.borderColor = "#333";
               }}
             >
-              Manage Subscription
+              Upgrade Plan
             </button>
           </div>
         </div>
@@ -715,7 +633,7 @@ function BillingSection() {
                 letterSpacing: "-1px",
               }}
             >
-              24,592
+              {loading ? "..." : formattedTokensUsed}
             </span>
             <span
               style={{
@@ -726,7 +644,7 @@ function BillingSection() {
                 marginBottom: "4px",
               }}
             >
-              / 500K TOKENS
+              / {loading ? "..." : `${formattedTokensLimit} TOKENS`}
             </span>
           </div>
 
@@ -741,7 +659,7 @@ function BillingSection() {
             }}
           >
             <div
-              style={{ height: "100%", background: "#EAEAEA", width: "5%" }}
+              style={{ height: "100%", background: "#EAEAEA", width: `${percentage}%`, transition: 'width 0.5s ease' }}
             />
           </div>
 
@@ -755,7 +673,7 @@ function BillingSection() {
               letterSpacing: "0.5px",
             }}
           >
-            Resets in 14 days
+            {loading ? "Loading metrics..." : resetMessage}
           </div>
         </div>
       </div>
@@ -859,10 +777,12 @@ function InputField({
   label,
   defaultValue,
   type = "text",
+  readOnly = false,
 }: {
   label: string;
   defaultValue?: string;
   type?: string;
+  readOnly?: boolean;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -881,21 +801,23 @@ function InputField({
       <input
         type={type}
         defaultValue={defaultValue}
+        readOnly={readOnly}
         suppressHydrationWarning={true}
         style={{
           width: "100%",
-          background: "#050505",
+          background: readOnly ? "#000" : "#050505",
           border: "1px solid #222",
-          color: "#EAEAEA",
+          color: readOnly ? "#888" : "#EAEAEA",
           padding: "14px 16px",
           borderRadius: "2px",
           fontSize: "13px",
           fontFamily: '"Geist Mono", monospace',
           outline: "none",
           transition: "border-color 0.2s",
+          cursor: readOnly ? "not-allowed" : "text",
         }}
-        onFocus={(e) => (e.currentTarget.style.borderColor = "#555")}
-        onBlur={(e) => (e.currentTarget.style.borderColor = "#222")}
+        onFocus={(e) => !readOnly && (e.currentTarget.style.borderColor = "#555")}
+        onBlur={(e) => !readOnly && (e.currentTarget.style.borderColor = "#222")}
       />
     </div>
   );

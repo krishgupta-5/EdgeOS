@@ -1,6 +1,6 @@
 import { db } from "@/lib/firebase-admin";
 
-const DAILY_TOKEN_LIMIT = 10_000;
+const DAILY_TOKEN_LIMIT = 50_000;
 const QUOTA_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface TokenQuota {

@@ -44,7 +44,7 @@ interface ChatPanelProps {
   onShowLoginModal?: (show: boolean) => void;
 }
 
-type Step = "config" | "docker" | "pipeline" | "docs" | "db" | "folder" | "references";
+type Step = "config" | "docker" | "pipeline" | "docs" | "db" | "folder" | "references" | "apiDesign" | "testingPlan";
 
 // ─────────────────────────────────────────────
 // Copy Button
@@ -116,6 +116,8 @@ function LanguageBadge({ language }: { language: string }) {
     image: "IMG",
     folder: "TREE",
     references: "REFS",
+    apidesign: "API",
+    testingplan: "TESTS",
   };
   return (
     <span
@@ -183,9 +185,9 @@ function FolderStructureViewer({ content }: { content: string }) {
 // ─────────────────────────────────────────────
 function ReferencesViewer({ references }: { references: Reference[] }) {
   const categoryColors: Record<string, string> = {
-    docs:    "#60A5FA",
-    guide:   "#34D399",
-    tool:    "#FBBF24",
+    docs: "#60A5FA",
+    guide: "#34D399",
+    tool: "#FBBF24",
     article: "#A78BFA",
   };
 
@@ -291,6 +293,242 @@ function ReferencesViewer({ references }: { references: Reference[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// API Design Viewer
+// ─────────────────────────────────────────────
+function ApiDesignViewer({ content }: { content: string }) {
+  const methodColors: Record<string, { bg: string; color: string }> = {
+    GET: { bg: "#0D2D1A", color: "#34D399" },
+    POST: { bg: "#0D1F2D", color: "#60A5FA" },
+    PUT: { bg: "#2D1F0D", color: "#FBBF24" },
+    PATCH: { bg: "#2D1A00", color: "#FB923C" },
+    DELETE: { bg: "#2D0D0D", color: "#F87171" },
+  };
+
+  // Parse YAML into endpoint groups for display
+  let groups: Array<{
+    group: string;
+    routes: Array<{
+      method: string;
+      path: string;
+      description: string;
+      auth_required: boolean;
+      request_body: string;
+      response: string;
+    }>;
+  }> = [];
+
+  try {
+    // Simple regex-based extraction to avoid adding a YAML dep in the client
+    const groupMatches = content.matchAll(/- group:\s*(.+)/g);
+    const routeBlocks = content.split(/- group:/g).slice(1);
+
+    for (const block of routeBlocks) {
+      const groupName = block.match(/^[^\n]*/)?.[0]?.trim() ?? "unknown";
+      const routeMatches = [...block.matchAll(/- method:\s*(.+?)[\s\S]*?path:\s*(.+?)[\s\S]*?description:\s*(.+?)[\s\S]*?auth_required:\s*(.+?)[\s\S]*?request_body:\s*(.+?)[\s\S]*?response:\s*(.+?)(?=\n\s*- method:|\n\s*- group:|\n\s*$|$)/g)];
+      const routes = routeMatches.map(m => ({
+        method: m[1]?.trim() ?? "",
+        path: m[2]?.trim() ?? "",
+        description: m[3]?.trim() ?? "",
+        auth_required: m[4]?.trim() === "true",
+        request_body: m[5]?.trim() ?? "none",
+        response: m[6]?.trim() ?? "",
+      }));
+      if (groupName && routes.length > 0) {
+        groups.push({ group: groupName, routes });
+      }
+    }
+  } catch {
+    // Fallback: render raw YAML as code
+    groups = [];
+  }
+
+  if (groups.length === 0) {
+    return (
+      <pre style={{ margin: 0, fontSize: "12px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", color: "#CCCCCC" }}>
+        {content}
+      </pre>
+    );
+  }
+
+  return (
+    <div style={{ fontFamily: '"Geist", sans-serif', display: "flex", flexDirection: "column", gap: "24px" }}>
+      {groups.map((g, gi) => (
+        <div key={gi}>
+          <div style={{
+            fontSize: "10px",
+            fontFamily: '"Geist Mono", monospace',
+            fontWeight: 600,
+            letterSpacing: "1px",
+            textTransform: "uppercase",
+            color: "#888",
+            marginBottom: "10px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}>
+            <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#60A5FA" }} />
+            {g.group}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {g.routes.map((r, ri) => {
+              const mc = methodColors[r.method] ?? { bg: "#1A1A1A", color: "#AAAAAA" };
+              return (
+                <div key={ri} style={{
+                  padding: "12px 14px",
+                  background: "#080808",
+                  border: "1px solid #222",
+                  borderRadius: "4px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: "10px",
+                      fontFamily: '"Geist Mono", monospace',
+                      fontWeight: 700,
+                      letterSpacing: "0.5px",
+                      padding: "3px 8px",
+                      borderRadius: "3px",
+                      background: mc.bg,
+                      color: mc.color,
+                      minWidth: "52px",
+                      textAlign: "center",
+                    }}>
+                      {r.method}
+                    </span>
+                    <span style={{ fontSize: "13px", color: "#EAEAEA", fontFamily: '"Geist Mono", monospace', fontWeight: 500 }}>
+                      {r.path}
+                    </span>
+                    {r.auth_required && (
+                      <span style={{ fontSize: "9px", color: "#FBBF24", border: "1px solid #3D2E00", background: "#1A1400", padding: "2px 6px", borderRadius: "3px", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px" }}>
+                        AUTH
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#888", lineHeight: "1.5" }}>{r.description}</div>
+                  {r.request_body && r.request_body !== "none" && (
+                    <div style={{ fontSize: "11px", color: "#666", fontFamily: '"Geist Mono", monospace' }}>
+                      <span style={{ color: "#555" }}>body:</span> {r.request_body}
+                    </div>
+                  )}
+                  <div style={{ fontSize: "11px", color: "#666", fontFamily: '"Geist Mono", monospace' }}>
+                    <span style={{ color: "#555" }}>returns:</span> {r.response}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Testing Plan Viewer
+// ─────────────────────────────────────────────
+function TestingPlanViewer({ content }: { content: string }) {
+  const sectionColors: Record<string, string> = {
+    unit: "#34D399",
+    integration: "#60A5FA",
+    e2e: "#A78BFA",
+    ci: "#FBBF24",
+  };
+
+  // Extract simple sections by scanning lines
+  const lines = content.split("\n");
+  const sections: Array<{ key: string; items: string[] }> = [];
+  let currentSection = "";
+  let currentItems: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^(unit|integration|e2e|ci):/.test(trimmed)) {
+      if (currentSection) sections.push({ key: currentSection, items: currentItems });
+      currentSection = trimmed.replace(":", "");
+      currentItems = [];
+    } else if (currentSection && trimmed.startsWith("-")) {
+      currentItems.push(trimmed.replace(/^-\s*/, "").replace(/^focus:\s*/, "").replace(/^scenarios:\s*/, ""));
+    } else if (currentSection && trimmed && !trimmed.includes(":")) {
+      // inline values like framework, coverage_target
+      currentItems.push(trimmed);
+    }
+  }
+  if (currentSection) sections.push({ key: currentSection, items: currentItems });
+
+  // Extract top-level fields: strategy, coverage_target
+  const strategy = lines.find(l => l.trim().startsWith("strategy:"))?.split(":")[1]?.trim() ?? "";
+  const coverage = lines.find(l => l.trim().startsWith("coverage_target:"))?.split(":")[1]?.trim() ?? "";
+
+  const sectionLabels: Record<string, string> = {
+    unit: "Unit Tests",
+    integration: "Integration Tests",
+    e2e: "End-to-End Tests",
+    ci: "CI Configuration",
+  };
+
+  if (sections.length === 0) {
+    return (
+      <pre style={{ margin: 0, fontSize: "12px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", color: "#CCCCCC" }}>
+        {content}
+      </pre>
+    );
+  }
+
+  return (
+    <div style={{ fontFamily: '"Geist", sans-serif', display: "flex", flexDirection: "column", gap: "6px" }}>
+      {(strategy || coverage) && (
+        <div style={{ padding: "12px 14px", background: "#080808", border: "1px solid #222", borderRadius: "4px", marginBottom: "10px", display: "flex", gap: "24px", flexWrap: "wrap" }}>
+          {strategy && (
+            <div>
+              <div style={{ fontSize: "10px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "4px" }}>STRATEGY</div>
+              <div style={{ fontSize: "13px", color: "#CCCCCC" }}>{strategy}</div>
+            </div>
+          )}
+          {coverage && (
+            <div>
+              <div style={{ fontSize: "10px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "4px" }}>COVERAGE TARGET</div>
+              <div style={{ fontSize: "13px", color: "#34D399", fontFamily: '"Geist Mono", monospace', fontWeight: 600 }}>{coverage}</div>
+            </div>
+          )}
+        </div>
+      )}
+      {sections.map((sec, i) => {
+        const color = sectionColors[sec.key] ?? "#888";
+        return (
+          <div key={i} style={{ padding: "12px 14px", background: "#080808", border: "1px solid #222", borderRadius: "4px" }}>
+            <div style={{
+              fontSize: "10px",
+              fontFamily: '"Geist Mono", monospace',
+              fontWeight: 600,
+              letterSpacing: "1px",
+              textTransform: "uppercase",
+              color,
+              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}>
+              <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: color }} />
+              {sectionLabels[sec.key] ?? sec.key}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {sec.items.map((item, j) => (
+                <div key={j} style={{ fontSize: "13px", color: "#CCCCCC", display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                  <span style={{ color: "#444", flexShrink: 0, marginTop: "1px", fontFamily: '"Geist Mono", monospace' }}>—</span>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -522,7 +760,6 @@ export default function ChatPanel({
     if (isModifyMode) return "config";
 
     if (hasGeneratedConfig) {
-      // Check in order of expected flow: docker -> pipeline -> docs -> folder -> db -> references
       if (lower.includes("docker"))
         return "docker";
       if (lower.includes("pipeline") || lower.includes("show pipeline"))
@@ -558,13 +795,36 @@ export default function ChatPanel({
         lower.includes("documentation links")
       )
         return "references";
-      // Keep "continue" as fallback for next step in flow
+      if (
+        lower.includes("api design") ||
+        lower.includes("api spec") ||
+        lower.includes("endpoints") ||
+        lower.includes("show api") ||
+        lower.includes("api routes")
+      )
+        return "apiDesign";
+      if (
+        lower.includes("test") ||
+        lower.includes("testing") ||
+        lower.includes("test plan") ||
+        lower.includes("testing plan") ||
+        lower.includes("show tests")
+      )
+        return "testingPlan";
       if (lower.includes("continue"))
         return "docker";
     }
 
     return "config";
   };
+
+  const EXPLORE_OPTIONS = [
+    "Show Folder Structure",
+    "View DB Schema",
+    "Show References",
+    "Show API Design",
+    "Show Testing Plan",
+  ];
 
   const buildAssistantMessage = (
     step: Step,
@@ -616,7 +876,7 @@ export default function ChatPanel({
           language: "markdown",
           content: data.markdown,
         },
-        options: ["Show Folder Structure", "View DB Schema", "Show References"],
+        options: EXPLORE_OPTIONS,
       };
     if (step === "folder")
       return {
@@ -626,7 +886,7 @@ export default function ChatPanel({
           language: "folder",
           content: data.folderStructure ?? "Folder structure not available.",
         },
-        options: ["Show References", "View DB Schema"],
+        options: EXPLORE_OPTIONS,
       };
     if (step === "references") {
       const refs: Reference[] = data.references ?? [];
@@ -634,7 +894,7 @@ export default function ChatPanel({
         return {
           content: "No references available for this stack.",
           file: undefined,
-          options: ["View DB Schema"],
+          options: EXPLORE_OPTIONS,
         };
       return {
         content: `${refs.length} reference${refs.length !== 1 ? "s" : ""} curated for your stack.`,
@@ -644,15 +904,52 @@ export default function ChatPanel({
           content: "",
           references: refs,
         },
-        options: ["View DB Schema"],
+        options: EXPLORE_OPTIONS,
       };
     }
+    if (step === "apiDesign") {
+      const apiContent = data.apiDesign ?? "";
+      if (!apiContent)
+        return {
+          content: "API design not available for this stack.",
+          file: undefined,
+          options: EXPLORE_OPTIONS,
+        };
+      return {
+        content: "API design specification generated. Endpoints, methods, and auth requirements mapped.",
+        file: {
+          name: "api-design.yaml",
+          language: "apidesign",
+          content: apiContent,
+        },
+        options: EXPLORE_OPTIONS,
+      };
+    }
+    if (step === "testingPlan") {
+      const testContent = data.testingPlan ?? "";
+      if (!testContent)
+        return {
+          content: "Testing plan not available for this stack.",
+          file: undefined,
+          options: EXPLORE_OPTIONS,
+        };
+      return {
+        content: "Testing plan generated. Unit, integration, and E2E strategy defined.",
+        file: {
+          name: "testing-plan.yaml",
+          language: "testingplan",
+          content: testContent,
+        },
+        options: EXPLORE_OPTIONS,
+      };
+    }
+    // db step
     if (!data.dbSchema)
       return {
         content:
           'ERR: DB schema not responding.\n\nDiagnostics:\n- n8n webhook timeout\n- "Respond to Webhook" node disconnected\n- N8N_WEBHOOK_URL missing in .env.local\n\nVerify workflow and retry.',
         file: undefined,
-        options: ["View DB Schema"],
+        options: EXPLORE_OPTIONS,
       };
     return {
       content: "Database schema rendered via n8n → Gemini → Kroki.",
@@ -665,7 +962,7 @@ export default function ChatPanel({
           diagram: data.dbSchema.diagram ?? "",
         },
       },
-      options: [],
+      options: EXPLORE_OPTIONS,
     };
   };
 
@@ -973,6 +1270,10 @@ export default function ChatPanel({
       return <FolderStructureViewer content={content} />;
     if (language === "references")
       return <ReferencesViewer references={msg.file.references ?? []} />;
+    if (language === "apidesign")
+      return <ApiDesignViewer content={content} />;
+    if (language === "testingplan")
+      return <TestingPlanViewer content={content} />;
     if (language === "markdown")
       return markdownMode[msg.id] === "code" ? (
         <pre style={{ margin: 0, fontSize: "12px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", color: "#CCCCCC" }}>
@@ -997,7 +1298,7 @@ export default function ChatPanel({
     if (!msg.file) return null;
     const { language, name, content } = msg.file;
     const isMarkdown = language === "markdown";
-    const isCopyable = ["yaml", "markdown", "folder"].includes(language);
+    const isCopyable = ["yaml", "markdown", "folder", "apidesign", "testingplan"].includes(language);
     const currentMode = markdownMode[msg.id] ?? "preview";
     return (
       <div
@@ -1302,7 +1603,7 @@ export default function ChatPanel({
                     {msg.file && (
                       <div style={{ marginTop: "20px", border: "1px solid #333", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
                         {renderFileHeader(msg)}
-                        <div style={{ padding: (msg.file.language === "pipeline" || msg.file.language === "dbschema" || msg.file.language === "references") ? "20px" : "16px", overflowX: "auto" }}>
+                        <div style={{ padding: (msg.file.language === "pipeline" || msg.file.language === "dbschema" || msg.file.language === "references" || msg.file.language === "apidesign" || msg.file.language === "testingplan") ? "20px" : "16px", overflowX: "auto" }}>
                           {renderFileContent(msg)}
                         </div>
                       </div>
@@ -1312,15 +1613,18 @@ export default function ChatPanel({
                     msg.options.length > 0 &&
                     msg.role === "assistant" &&
                     (() => {
-                      const lastAssistantIdx = messages.reduce((acc, m, i) => (m.role === "assistant" ? i : acc), -1);
                       const currentIdx = messages.findIndex((m) => m.id === msg.id);
-                      if (currentIdx !== lastAssistantIdx) return null;
                       return (
                         <div style={{ display: "flex", gap: "10px", marginTop: "24px", flexWrap: "wrap" }}>
-                          {msg.options.map((option, i) => (
+                          {msg.options.map((option, i) => {
+                            const isClicked = messages.some(
+                              (m) => m.role === "user" && m.content === option
+                            );
+                            return (
                             <button
                               key={i}
                               onClick={() => {
+                                if (isClicked) return;
                                 if (option.toLowerCase() === "modify") {
                                   setIsModifyMode(true);
                                   setMessages((prev) => [
@@ -1338,23 +1642,25 @@ export default function ChatPanel({
                               }}
                               style={{
                                 padding: "8px 16px",
-                                background: "#080808",
-                                border: "1px solid #333",
-                                color: "#EAEAEA",
+                                background: isClicked ? "transparent" : "#080808",
+                                border: `1px solid ${isClicked ? "#222" : "#333"}`,
+                                color: isClicked ? "#555" : "#EAEAEA",
                                 fontSize: "11px",
                                 fontFamily: '"Geist Mono", monospace',
-                                cursor: "pointer",
+                                cursor: isClicked ? "default" : "pointer",
                                 transition: "all 0.2s ease",
                                 borderRadius: "4px",
                                 textTransform: "uppercase",
                                 fontWeight: 500,
+                                opacity: isClicked ? 0.7 : 1,
                               }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.color = "#000"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#EAEAEA"; }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#080808"; (e.currentTarget as HTMLButtonElement).style.color = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#333"; }}
+                              onMouseEnter={(e) => { if (!isClicked) { (e.currentTarget as HTMLButtonElement).style.background = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.color = "#000"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#EAEAEA"; } }}
+                              onMouseLeave={(e) => { if (!isClicked) { (e.currentTarget as HTMLButtonElement).style.background = "#080808"; (e.currentTarget as HTMLButtonElement).style.color = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#333"; } }}
                             >
                               {option}
                             </button>
-                          ))}
+                            );
+                          })}
                         </div>
                       );
                     })()}

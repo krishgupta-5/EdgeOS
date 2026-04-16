@@ -25,6 +25,8 @@
  * 20.  isTruncated rewritten — only flags genuinely cut-off output
  * 21.  Folder structure generation added — tree view of project layout
  * 22.  References generation added — curated docs/links per stack
+ * 23.  API Design generation added — endpoint specs per stack
+ * 24.  Testing Plan generation added — unit/integration/e2e strategy per stack
  */
 
 import { NextResponse } from "next/server";
@@ -38,13 +40,13 @@ import { getOrCreateQuota, deductTokens } from "@/lib/token-quota";
 // ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
-const MODEL              = "llama-3.1-8b-instant";
-const MAX_RETRIES        = 3;
-const MAX_HISTORY        = 6;               // 3 user + 3 assistant pairs
-const SESSION_TTL_MS     = 30 * 60 * 1000; // 30 min
-const MAX_SESSIONS       = 500;
-const PROMPT_MAX_LEN     = 2000;
-const PROMPT_MIN_LEN     = 5;
+const MODEL = "llama-3.1-8b-instant";
+const MAX_RETRIES = 3;
+const MAX_HISTORY = 6;               // 3 user + 3 assistant pairs
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min
+const MAX_SESSIONS = 500;
+const PROMPT_MAX_LEN = 2000;
+const PROMPT_MIN_LEN = 5;
 const REQUEST_TIMEOUT_MS = 30_000;
 const ACTIVEPIECES_TIMEOUT_MS = 45_000;
 
@@ -52,12 +54,14 @@ const ACTIVEPIECES_TIMEOUT_MS = 45_000;
 // Per-artifact token budgets
 // docker raised to 1200 to prevent truncation on healthcheck/volumes blocks
 const TOKEN_BUDGET = {
-  config:          500,
-  docker:         1200,
-  pipeline:        600,
-  markdown:        800,
+  config: 500,
+  docker: 1200,
+  pipeline: 600,
+  markdown: 800,
   folderStructure: 600,
-  references:      500,
+  references: 500,
+  apiDesign: 800,
+  testingPlan: 700,
 } as const;
 
 // Explicit image map injected into DOCKER_PROMPT
@@ -87,41 +91,45 @@ interface Reference {
 }
 
 interface GenerateResult {
-  yaml:            string;
-  docker:          string;
-  pipeline:        string;
-  markdown:        string;
+  yaml: string;
+  docker: string;
+  pipeline: string;
+  markdown: string;
   folderStructure?: string;
-  references?:     Reference[];
-  dbSchema?:       DbSchema;
+  references?: Reference[];
+  dbSchema?: DbSchema;
+  apiDesign?: string;
+  testingPlan?: string;
 }
 
 interface RegenerateFlags {
-  docker:          boolean;
-  pipeline:        boolean;
-  markdown:        boolean;
+  docker: boolean;
+  pipeline: boolean;
+  markdown: boolean;
   folderStructure: boolean;
-  references:      boolean;
+  references: boolean;
+  apiDesign: boolean;
+  testingPlan: boolean;
 }
 
-type Role       = "user" | "assistant";
+type Role = "user" | "assistant";
 type HistoryMsg = { role: Role; content: string };
 
 interface SessionData {
-  history:    HistoryMsg[];
+  history: HistoryMsg[];
   lastResult: GenerateResult | null;
-  cache:      Map<string, GenerateResult>;
-  updatedAt:  number;
+  cache: Map<string, GenerateResult>;
+  updatedAt: number;
 }
 
 // ─────────────────────────────────────────────
 // Structured logger
 // ─────────────────────────────────────────────
 const log = {
-  info:  (msg: string, meta?: object) =>
-    console.log(JSON.stringify({ level: "info",  msg, ...meta, ts: Date.now() })),
-  warn:  (msg: string, meta?: object) =>
-    console.warn(JSON.stringify({ level: "warn",  msg, ...meta, ts: Date.now() })),
+  info: (msg: string, meta?: object) =>
+    console.log(JSON.stringify({ level: "info", msg, ...meta, ts: Date.now() })),
+  warn: (msg: string, meta?: object) =>
+    console.warn(JSON.stringify({ level: "warn", msg, ...meta, ts: Date.now() })),
   error: (msg: string, meta?: object) =>
     console.error(JSON.stringify({ level: "error", msg, ...meta, ts: Date.now() })),
 };
@@ -218,11 +226,13 @@ function detectChanges(oldYaml: string, newYaml: string): RegenerateFlags {
   log.info("Diff detected", { changed: [...changed] });
 
   return {
-    docker:          [...changed].some(f => dockerFields.has(f)),
-    pipeline:        changed.size > 0,
-    markdown:        changed.size > 0,
+    docker: [...changed].some(f => dockerFields.has(f)),
+    pipeline: changed.size > 0,
+    markdown: changed.size > 0,
     folderStructure: changed.size > 0,
-    references:      changed.size > 0,
+    references: changed.size > 0,
+    apiDesign: changed.size > 0,
+    testingPlan: changed.size > 0,
   };
 }
 
@@ -231,7 +241,7 @@ function detectChanges(oldYaml: string, newYaml: string): RegenerateFlags {
 // ─────────────────────────────────────────────
 function extractYamlBlock(text: string): string {
   const lines = text.split("\n");
-  const topLevelKeys = /^(system|backend|frontend|database|auth|infra|pipeline|version|services):/;
+  const topLevelKeys = /^(system|backend|frontend|database|auth|infra|pipeline|version|services|api_design|testing):/;
   const start = lines.findIndex(l => topLevelKeys.test(l.trim()));
   return start >= 0 ? lines.slice(start).join("\n").trim() : text.trim();
 }
@@ -495,6 +505,75 @@ RULES:
 - Examples of valid URLs: https://expressjs.com/en/starter/hello-world.html, https://docs.docker.com/compose/, https://fastapi.tiangolo.com/tutorial/
 - Output valid JSON only — no trailing commas, no comments.`;
 
+const API_DESIGN_PROMPT = `You are a senior backend engineer. Given a stack summary, output ONLY a valid YAML document describing the API design. No prose, no markdown fences.
+
+Output this exact structure:
+api_design:
+  base_url: /api/v1
+  auth_header: <e.g. Authorization: Bearer <token> | none>
+  format: <json|graphql|grpc>
+  endpoints:
+    - group: <resource group name, e.g. auth, users, products>
+      routes:
+        - method: <GET|POST|PUT|PATCH|DELETE>
+          path: <e.g. /users/:id>
+          description: <one sentence — what this endpoint does>
+          auth_required: <true|false>
+          request_body: <brief description or "none">
+          response: <brief description of success response>
+    - group: <next group>
+      routes:
+        - method: <method>
+          path: <path>
+          description: <one sentence>
+          auth_required: <true|false>
+          request_body: <brief or "none">
+          response: <brief>
+
+RULES:
+- Include 3–5 resource groups relevant to the system described in the stack summary.
+- Each group must have 2–4 routes.
+- method, path, description, auth_required, request_body, and response are all required for every route.
+- Match resource groups to what the system actually does — no generic "items" or "data" groups.
+- Lines starting with PREV_ are context metadata — do NOT copy them into your output.
+- Output ONLY the YAML block. Nothing else.
+- Always complete the entire file — never stop mid-block.`;
+
+const TESTING_PLAN_PROMPT = `You are a senior QA engineer. Given a stack summary, output ONLY a valid YAML document describing a testing plan. No prose, no markdown fences.
+
+Output this exact structure:
+testing:
+  strategy: <brief 1-sentence description of overall approach>
+  coverage_target: <e.g. 80%>
+  unit:
+    framework: <e.g. Jest | pytest | Go testing>
+    focus:
+      - <specific module or function to test>
+      - <specific module or function to test>
+    mocking: <brief description of what gets mocked>
+  integration:
+    framework: <e.g. Supertest | pytest-httpx | httptest>
+    focus:
+      - <specific integration scenario>
+      - <specific integration scenario>
+    test_db: <e.g. SQLite in-memory | Mongo in-memory | test Postgres container>
+  e2e:
+    framework: <e.g. Playwright | Cypress | none>
+    scenarios:
+      - <user-facing flow to test end to end>
+      - <user-facing flow>
+  ci:
+    run_on: <e.g. every pull request | every push to main>
+    parallel: <true|false>
+    fail_fast: <true|false>
+
+RULES:
+- All frameworks and tools must match the lang/framework in the stack summary.
+- Scenarios and focus items must be specific to what this system does — never generic like "test the API".
+- Lines starting with PREV_ are context metadata — do NOT copy them into your output.
+- Output ONLY the YAML block. Nothing else.
+- Always complete the entire file — never stop mid-block.`;
+
 // ─────────────────────────────────────────────
 // Core helpers
 // ─────────────────────────────────────────────
@@ -638,7 +717,7 @@ async function callN8nDbDesign(
   stackSummary: string
 ): Promise<DbSchema | null> {
   const webhookUrl = process.env.ACTIVEPIECES_WEBHOOK_URL;
-  
+
   if (!webhookUrl) {
     log.warn("ACTIVEPIECES_WEBHOOK_URL not set - skipping DB schema generation");
     return null;
@@ -663,7 +742,7 @@ async function callN8nDbDesign(
 
     const text = await res.text();
     const cleanText = text.trimStart().startsWith('=') ? text.trimStart().slice(1) : text;
-    
+
     let data: any;
     try {
       data = JSON.parse(cleanText);
@@ -695,13 +774,13 @@ async function callN8nDbDesign(
 // Groq API call
 // ─────────────────────────────────────────────
 async function callGroq(
-  apiKey:       string,
+  apiKey: string,
   systemPrompt: string,
-  userMessage:  string,
-  history:      HistoryMsg[],
-  maxTokens:    number,
-  label:        string,
-  attempt0 =    0
+  userMessage: string,
+  history: HistoryMsg[],
+  maxTokens: number,
+  label: string,
+  attempt0 = 0
 ): Promise<{ content: string; tokens: number } | null> {
   const temperature = label === "markdown" ? 0.3 : 0.1;
 
@@ -712,9 +791,9 @@ async function callGroq(
   for (let attempt = attempt0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const fetchPromise = fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method:  "POST",
+        method: "POST",
         headers: {
-          Authorization:  `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -722,11 +801,11 @@ async function callGroq(
           messages: [
             { role: "system", content: systemPrompt },
             ...history,
-            { role: "user",   content: userMessage },
+            { role: "user", content: userMessage },
           ],
           temperature,
           max_tokens: maxTokens,
-          top_p:      0.9,
+          top_p: 0.9,
           ...(stopTokens.length > 0 ? { stop: stopTokens } : {}),
         }),
       });
@@ -748,7 +827,7 @@ async function callGroq(
         return null;
       }
 
-      const data  = await res.json();
+      const data = await res.json();
       const raw: string = data?.choices?.[0]?.message?.content ?? "";
       const cleaned = extractYamlBlock(stripFences(raw));
       const tokens = data?.usage?.total_tokens ?? 0;
@@ -778,18 +857,18 @@ async function callGroq(
 // Groq call for references (raw content, no YAML extraction)
 // ─────────────────────────────────────────────
 async function callGroqRaw(
-  apiKey:       string,
+  apiKey: string,
   systemPrompt: string,
-  userMessage:  string,
-  history:      HistoryMsg[],
-  maxTokens:    number,
-  label:        string,
+  userMessage: string,
+  history: HistoryMsg[],
+  maxTokens: number,
+  label: string,
 ): Promise<{ content: string; tokens: number } | null> {
   try {
     const fetchPromise = fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method:  "POST",
+      method: "POST",
       headers: {
-        Authorization:  `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -797,11 +876,11 @@ async function callGroqRaw(
         messages: [
           { role: "system", content: systemPrompt },
           ...history,
-          { role: "user",   content: userMessage },
+          { role: "user", content: userMessage },
         ],
         temperature: 0.1,
-        max_tokens:  maxTokens,
-        top_p:       0.9,
+        max_tokens: maxTokens,
+        top_p: 0.9,
       }),
     });
 
@@ -811,9 +890,9 @@ async function callGroqRaw(
       return null;
     }
 
-    const data    = await res.json();
+    const data = await res.json();
     const content: string = data?.choices?.[0]?.message?.content ?? "";
-    const tokens  = data?.usage?.total_tokens ?? 0;
+    const tokens = data?.usage?.total_tokens ?? 0;
     log.info("Groq raw call OK", { label, tokens });
     return { content, tokens };
   } catch (err) {
@@ -845,8 +924,8 @@ export async function POST(req: Request) {
 
     // ── 1. Parse & validate ──────────────────────────────────────────────────
     let body: {
-      prompt?:    unknown;
-      mode?:      unknown;
+      prompt?: unknown;
+      mode?: unknown;
       sessionId?: unknown;
     };
     try {
@@ -855,9 +934,9 @@ export async function POST(req: Request) {
       return errorResponse("Invalid JSON body", "BAD_REQUEST", 400);
     }
 
-    const rawPrompt = typeof body.prompt    === "string" ? body.prompt    : "";
-    const mode      = typeof body.mode      === "string" ? body.mode      : "generate";
-    const rawSid    = typeof body.sessionId === "string" ? body.sessionId : "";
+    const rawPrompt = typeof body.prompt === "string" ? body.prompt : "";
+    const mode = typeof body.mode === "string" ? body.mode : "generate";
+    const rawSid = typeof body.sessionId === "string" ? body.sessionId : "";
 
     const sessionId = rawSid.trim() || `anon-${Date.now()}`;
     const prompt = sanitisePrompt(rawPrompt);
@@ -887,7 +966,7 @@ export async function POST(req: Request) {
     }
 
     // ── 3. Session ───────────────────────────────────────────────────────────
-    const session  = getSession(sessionId);
+    const session = getSession(sessionId);
     const cacheKey = `${sessionId}:${prompt.toLowerCase().trim()}`;
 
     // ── 4. Cache hit (skipped on modify) ────────────────────────────────────
@@ -915,24 +994,28 @@ export async function POST(req: Request) {
       if (!configResult) return errorResponse("Config regeneration failed", "LLM_ERROR", 500);
       const yaml = configResult.content;
 
-      session.history.push({ role: "user",      content: userMessage });
+      session.history.push({ role: "user", content: userMessage });
       session.history.push({ role: "assistant", content: compressForHistory(yaml, "config") });
 
       const flags = detectChanges(oldYaml, yaml);
       log.info("Modify regen flags", { sessionId, flags });
 
-      let docker          = session.lastResult.docker;
-      let pipeline        = session.lastResult.pipeline;
-      let markdown        = session.lastResult.markdown;
+      let docker = session.lastResult.docker;
+      let pipeline = session.lastResult.pipeline;
+      let markdown = session.lastResult.markdown;
       let folderStructure = session.lastResult.folderStructure;
-      let references      = session.lastResult.references;
-      let dbSchema        = session.lastResult.dbSchema;
+      let references = session.lastResult.references;
+      let dbSchema = session.lastResult.dbSchema;
+      let apiDesign = session.lastResult.apiDesign;
+      let testingPlan = session.lastResult.testingPlan;
 
-      let dockerResult:          { content: string; tokens: number } | null = null;
-      let pipelineResult:        { content: string; tokens: number } | null = null;
-      let markdownResult:        { content: string; tokens: number } | null = null;
+      let dockerResult: { content: string; tokens: number } | null = null;
+      let pipelineResult: { content: string; tokens: number } | null = null;
+      let markdownResult: { content: string; tokens: number } | null = null;
       let folderStructureResult: { content: string; tokens: number } | null = null;
-      let referencesResult:      { content: string; tokens: number } | null = null;
+      let referencesResult: { content: string; tokens: number } | null = null;
+      let apiDesignResult: { content: string; tokens: number } | null = null;
+      let testingPlanResult: { content: string; tokens: number } | null = null;
 
       if (flags.docker) {
         const ctx = `Generate docker-compose for this UPDATED stack: ${summarizeYaml(yaml)}. The db field may have changed - use the IMAGE MAP to pick the correct database image.`;
@@ -982,24 +1065,46 @@ export async function POST(req: Request) {
         }
       }
 
+      if (flags.apiDesign) {
+        const ctx = `Generate API design for this UPDATED stack: ${summarizeYaml(yaml)}`;
+        apiDesignResult = await callGroq(apiKey, API_DESIGN_PROMPT, ctx, trimHistory(session.history), TOKEN_BUDGET.apiDesign, "apiDesign");
+        if (apiDesignResult) {
+          apiDesign = apiDesignResult.content;
+          session.history.push({ role: "assistant", content: compressForHistory(apiDesign, "apidesign") });
+        }
+      }
+
+      if (flags.testingPlan) {
+        const ctx = `Generate testing plan for this UPDATED stack: ${summarizeYaml(yaml)}`;
+        testingPlanResult = await callGroq(apiKey, TESTING_PLAN_PROMPT, ctx, trimHistory(session.history), TOKEN_BUDGET.testingPlan, "testingPlan");
+        if (testingPlanResult) {
+          testingPlan = testingPlanResult.content;
+          session.history.push({ role: "assistant", content: compressForHistory(testingPlan, "testingplan") });
+        }
+      }
+
       let totalTokens = configResult.tokens;
-      if (flags.docker   && dockerResult)          totalTokens += dockerResult.tokens;
-      if (flags.pipeline && pipelineResult)         totalTokens += pipelineResult.tokens;
-      if (flags.markdown && markdownResult)         totalTokens += markdownResult.tokens;
+      if (flags.docker && dockerResult) totalTokens += dockerResult.tokens;
+      if (flags.pipeline && pipelineResult) totalTokens += pipelineResult.tokens;
+      if (flags.markdown && markdownResult) totalTokens += markdownResult.tokens;
       if (flags.folderStructure && folderStructureResult) totalTokens += folderStructureResult.tokens;
-      if (flags.references && referencesResult)     totalTokens += referencesResult.tokens;
-      
+      if (flags.references && referencesResult) totalTokens += referencesResult.tokens;
+      if (flags.apiDesign && apiDesignResult) totalTokens += apiDesignResult.tokens;
+      if (flags.testingPlan && testingPlanResult) totalTokens += testingPlanResult.tokens;
+
       await deductTokens(userId, totalTokens);
       log.info("Tokens deducted for modify", { userId, totalTokens });
 
       const result: GenerateResult = {
-        yaml:     safeYaml(yaml),
-        docker:   safeYaml(docker),
+        yaml: safeYaml(yaml),
+        docker: safeYaml(docker),
         pipeline,
         markdown,
         folderStructure,
         references,
         dbSchema,
+        apiDesign,
+        testingPlan,
       };
 
       session.cache.delete(cacheKey);
@@ -1041,6 +1146,14 @@ export async function POST(req: Request) {
         await saveArtifact(sessionId, userId, "references", JSON.stringify(references));
         await memoryStore.addArtifact(sessionId, { type: "references", content: JSON.stringify(references), userId });
       }
+      if (apiDesign) {
+        await saveArtifact(sessionId, userId, "apiDesign", apiDesign);
+        await memoryStore.addArtifact(sessionId, { type: "apiDesign", content: apiDesign, userId });
+      }
+      if (testingPlan) {
+        await saveArtifact(sessionId, userId, "testingPlan", testingPlan);
+        await memoryStore.addArtifact(sessionId, { type: "testingPlan", content: testingPlan, userId });
+      }
 
       await saveSessionMetadata(sessionId, userId);
       await memoryStore.updateSession(sessionId, { userId });
@@ -1059,7 +1172,7 @@ export async function POST(req: Request) {
     if (!configResult) return errorResponse("Config generation failed", "LLM_ERROR", 500);
     const yaml = configResult.content;
 
-    session.history.push({ role: "user",      content: userMessage });
+    session.history.push({ role: "user", content: userMessage });
     session.history.push({ role: "assistant", content: compressForHistory(yaml, "config") });
 
     const stackSummary = summarizeYaml(yaml);
@@ -1105,7 +1218,27 @@ export async function POST(req: Request) {
     );
     const references = referencesRaw ? parseReferences(referencesRaw.content) : [];
 
-    // Step 7 — DB Schema via n8n (non-blocking)
+    // Step 7 — API Design
+    const apiDesignCtx = `Generate API design for this stack: ${stackSummary}`;
+    const apiDesignResult = await callGroq(
+      apiKey, API_DESIGN_PROMPT, apiDesignCtx, trimHistory(session.history), TOKEN_BUDGET.apiDesign, "apiDesign"
+    );
+    const apiDesign = apiDesignResult?.content ?? "";
+    if (apiDesignResult) {
+      session.history.push({ role: "assistant", content: compressForHistory(apiDesign, "apidesign") });
+    }
+
+    // Step 8 — Testing Plan
+    const testingPlanCtx = `Generate testing plan for this stack: ${stackSummary}`;
+    const testingPlanResult = await callGroq(
+      apiKey, TESTING_PLAN_PROMPT, testingPlanCtx, trimHistory(session.history), TOKEN_BUDGET.testingPlan, "testingPlan"
+    );
+    const testingPlan = testingPlanResult?.content ?? "";
+    if (testingPlanResult) {
+      session.history.push({ role: "assistant", content: compressForHistory(testingPlan, "testingplan") });
+    }
+
+    // Step 9 — DB Schema via n8n (non-blocking)
     const dbSchema = await callN8nDbDesign(prompt, stackSummary);
     if (dbSchema) {
       log.info("DB schema attached to result");
@@ -1118,19 +1251,23 @@ export async function POST(req: Request) {
       pipelineResult.tokens +
       markdownResult.tokens +
       (folderStructureResult?.tokens ?? 0) +
-      (referencesRaw?.tokens ?? 0);
-    
+      (referencesRaw?.tokens ?? 0) +
+      (apiDesignResult?.tokens ?? 0) +
+      (testingPlanResult?.tokens ?? 0);
+
     await deductTokens(userId, totalTokens);
     log.info("Tokens deducted", { userId, totalTokens });
 
     const result: GenerateResult = {
-      yaml:            safeYaml(yaml),
-      docker:          safeYaml(docker),
-      pipeline:        safeYaml(pipeline),
+      yaml: safeYaml(yaml),
+      docker: safeYaml(docker),
+      pipeline: safeYaml(pipeline),
       markdown,
       folderStructure,
       references,
       ...(dbSchema ? { dbSchema } : {}),
+      ...(apiDesign ? { apiDesign } : {}),
+      ...(testingPlan ? { testingPlan } : {}),
     };
 
     session.cache.set(cacheKey, result);
@@ -1165,6 +1302,14 @@ export async function POST(req: Request) {
     if (references.length > 0) {
       await saveArtifact(sessionId, userId, "references", JSON.stringify(references));
       await memoryStore.addArtifact(sessionId, { type: "references", content: JSON.stringify(references), userId });
+    }
+    if (apiDesign) {
+      await saveArtifact(sessionId, userId, "apiDesign", apiDesign);
+      await memoryStore.addArtifact(sessionId, { type: "apiDesign", content: apiDesign, userId });
+    }
+    if (testingPlan) {
+      await saveArtifact(sessionId, userId, "testingPlan", testingPlan);
+      await memoryStore.addArtifact(sessionId, { type: "testingPlan", content: testingPlan, userId });
     }
 
     await saveSessionMetadata(sessionId, userId);
