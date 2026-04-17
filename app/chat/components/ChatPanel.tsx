@@ -21,17 +21,11 @@ export interface Message {
       mermaid: string;
       diagram: string;
     };
-    references?: Reference[];
   };
   options?: string[];
 }
 
-interface Reference {
-  title: string;
-  url: string;
-  description: string;
-  category: string;
-}
+
 
 const initialMessages: Message[] = [];
 
@@ -44,7 +38,7 @@ interface ChatPanelProps {
   onShowLoginModal?: (show: boolean) => void;
 }
 
-type Step = "config" | "docker" | "pipeline" | "docs" | "db" | "folder" | "references" | "apiDesign" | "testingPlan";
+type Step = "config" | "docker" | "pipeline" | "docs" | "db" | "folder" | "apiDesign" | "testingPlan";
 
 // ─────────────────────────────────────────────
 // Copy Button
@@ -115,7 +109,6 @@ function LanguageBadge({ language }: { language: string }) {
     dbschema: "SCHEMA",
     image: "IMG",
     folder: "TREE",
-    references: "REFS",
     apidesign: "API",
     testingplan: "TESTS",
   };
@@ -180,136 +173,19 @@ function FolderStructureViewer({ content }: { content: string }) {
   );
 }
 
-// ─────────────────────────────────────────────
-// References Viewer
-// ─────────────────────────────────────────────
-function ReferencesViewer({ references }: { references: Reference[] }) {
-  const categoryColors: Record<string, string> = {
-    docs: "#60A5FA",
-    guide: "#34D399",
-    tool: "#FBBF24",
-    article: "#A78BFA",
-  };
 
-  const categoryOrder = ["docs", "guide", "tool", "article"];
-  const grouped = categoryOrder.reduce<Record<string, Reference[]>>((acc, cat) => {
-    const items = references.filter((r) => r.category === cat);
-    if (items.length > 0) acc[cat] = items;
-    return acc;
-  }, {});
-
-  // Any refs with unknown category
-  const others = references.filter((r) => !categoryOrder.includes(r.category));
-  if (others.length > 0) grouped["other"] = others;
-
-  return (
-    <div style={{ fontFamily: '"Geist", sans-serif' }}>
-      {Object.entries(grouped).map(([cat, items]) => (
-        <div key={cat} style={{ marginBottom: "20px" }}>
-          <div
-            style={{
-              fontSize: "10px",
-              fontFamily: '"Geist Mono", monospace',
-              fontWeight: 600,
-              letterSpacing: "1px",
-              textTransform: "uppercase",
-              color: categoryColors[cat] ?? "#888",
-              marginBottom: "10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                background: categoryColors[cat] ?? "#888",
-              }}
-            />
-            {cat}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {items.map((ref, i) => (
-              <a
-                key={i}
-                href={ref.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "3px",
-                  padding: "12px 14px",
-                  background: "#080808",
-                  border: "1px solid #222",
-                  borderRadius: "4px",
-                  textDecoration: "none",
-                  transition: "border-color 0.15s, background 0.15s",
-                  cursor: "pointer",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.borderColor = "#444";
-                  (e.currentTarget as HTMLAnchorElement).style.background = "#0D0D0D";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.borderColor = "#222";
-                  (e.currentTarget as HTMLAnchorElement).style.background = "#080808";
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#EAEAEA",
-                    fontWeight: 500,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  {ref.title}
-                  <span style={{ fontSize: "10px", color: "#555" }}>↗</span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#888", lineHeight: "1.5" }}>
-                  {ref.description}
-                </div>
-                <div
-                  style={{
-                    fontSize: "10px",
-                    color: "#444",
-                    fontFamily: '"Geist Mono", monospace',
-                    marginTop: "2px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {ref.url}
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
 // API Design Viewer
 // ─────────────────────────────────────────────
 function ApiDesignViewer({ content }: { content: string }) {
-  const methodColors: Record<string, { bg: string; color: string }> = {
-    GET: { bg: "#0D2D1A", color: "#34D399" },
-    POST: { bg: "#0D1F2D", color: "#60A5FA" },
-    PUT: { bg: "#2D1F0D", color: "#FBBF24" },
-    PATCH: { bg: "#2D1A00", color: "#FB923C" },
-    DELETE: { bg: "#2D0D0D", color: "#F87171" },
+  const methodColors: Record<string, { bg: string; color: string; label: string }> = {
+    GET:    { bg: "#0D2D1A", color: "#34D399", label: "GET" },
+    POST:   { bg: "#0D1F2D", color: "#60A5FA", label: "POST" },
+    PUT:    { bg: "#2D1F0D", color: "#FBBF24", label: "PUT" },
+    PATCH:  { bg: "#2D1A00", color: "#FB923C", label: "PATCH" },
+    DELETE: { bg: "#2D0D0D", color: "#F87171", label: "DELETE" },
   };
 
-  // Parse YAML into endpoint groups for display
+  // Parse YAML into endpoint groups using robust line-by-line parsing
   let groups: Array<{
     group: string;
     routes: Array<{
@@ -322,25 +198,117 @@ function ApiDesignViewer({ content }: { content: string }) {
     }>;
   }> = [];
 
-  try {
-    // Simple regex-based extraction to avoid adding a YAML dep in the client
-    const groupMatches = content.matchAll(/- group:\s*(.+)/g);
-    const routeBlocks = content.split(/- group:/g).slice(1);
+  // Extract top-level metadata
+  let baseUrl = "";
+  let authHeader = "";
+  let format = "";
 
-    for (const block of routeBlocks) {
-      const groupName = block.match(/^[^\n]*/)?.[0]?.trim() ?? "unknown";
-      const routeMatches = [...block.matchAll(/- method:\s*(.+?)[\s\S]*?path:\s*(.+?)[\s\S]*?description:\s*(.+?)[\s\S]*?auth_required:\s*(.+?)[\s\S]*?request_body:\s*(.+?)[\s\S]*?response:\s*(.+?)(?=\n\s*- method:|\n\s*- group:|\n\s*$|$)/g)];
-      const routes = routeMatches.map(m => ({
-        method: m[1]?.trim() ?? "",
-        path: m[2]?.trim() ?? "",
-        description: m[3]?.trim() ?? "",
-        auth_required: m[4]?.trim() === "true",
-        request_body: m[5]?.trim() ?? "none",
-        response: m[6]?.trim() ?? "",
-      }));
-      if (groupName && routes.length > 0) {
-        groups.push({ group: groupName, routes });
+  try {
+    const lines = content.split("\n");
+
+    // Extract top-level fields
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("base_url:")) baseUrl = trimmed.replace("base_url:", "").trim();
+      if (trimmed.startsWith("auth_header:")) authHeader = trimmed.replace("auth_header:", "").trim();
+      if (trimmed.startsWith("format:")) format = trimmed.replace("format:", "").trim();
+    }
+
+    // Line-by-line state machine parser
+    let currentGroup: string | null = null;
+    let currentRoutes: typeof groups[0]["routes"] = [];
+    let currentRoute: Partial<typeof groups[0]["routes"][0]> = {};
+    let inRoutes = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Detect group start: "- group: auth"
+      const groupMatch = trimmed.match(/^-\s*group:\s*(.+)$/);
+      if (groupMatch) {
+        // Save previous group if exists
+        if (currentGroup !== null) {
+          // Push last route if in progress
+          if (currentRoute.method) {
+            currentRoutes.push({
+              method: currentRoute.method ?? "",
+              path: currentRoute.path ?? "",
+              description: currentRoute.description ?? "",
+              auth_required: currentRoute.auth_required ?? false,
+              request_body: currentRoute.request_body ?? "none",
+              response: currentRoute.response ?? "",
+            });
+          }
+          if (currentRoutes.length > 0) {
+            groups.push({ group: currentGroup, routes: [...currentRoutes] });
+          }
+        }
+        currentGroup = groupMatch[1].trim();
+        currentRoutes = [];
+        currentRoute = {};
+        inRoutes = false;
+        continue;
       }
+
+      // Detect routes: block start
+      if (trimmed === "routes:") {
+        inRoutes = true;
+        continue;
+      }
+
+      if (!currentGroup) continue;
+
+      // Detect a new route entry: "- method: GET"
+      const methodMatch = trimmed.match(/^-\s*method:\s*(.+)$/);
+      if (methodMatch) {
+        // Push previous route if in progress
+        if (currentRoute.method) {
+          currentRoutes.push({
+            method: currentRoute.method ?? "",
+            path: currentRoute.path ?? "",
+            description: currentRoute.description ?? "",
+            auth_required: currentRoute.auth_required ?? false,
+            request_body: currentRoute.request_body ?? "none",
+            response: currentRoute.response ?? "",
+          });
+        }
+        currentRoute = { method: methodMatch[1].trim() };
+        inRoutes = true;
+        continue;
+      }
+
+      // Parse route fields
+      if (inRoutes && currentRoute.method !== undefined) {
+        const pathMatch = trimmed.match(/^path:\s*(.+)$/);
+        if (pathMatch) { currentRoute.path = pathMatch[1].trim(); continue; }
+
+        const descMatch = trimmed.match(/^description:\s*(.+)$/);
+        if (descMatch) { currentRoute.description = descMatch[1].trim(); continue; }
+
+        const authMatch = trimmed.match(/^auth_required:\s*(.+)$/);
+        if (authMatch) { currentRoute.auth_required = authMatch[1].trim() === "true"; continue; }
+
+        const bodyMatch = trimmed.match(/^request_body:\s*(.+)$/);
+        if (bodyMatch) { currentRoute.request_body = bodyMatch[1].trim(); continue; }
+
+        const respMatch = trimmed.match(/^response:\s*(.+)$/);
+        if (respMatch) { currentRoute.response = respMatch[1].trim(); continue; }
+      }
+    }
+
+    // Push the last route and group
+    if (currentRoute.method) {
+      currentRoutes.push({
+        method: currentRoute.method ?? "",
+        path: currentRoute.path ?? "",
+        description: currentRoute.description ?? "",
+        auth_required: currentRoute.auth_required ?? false,
+        request_body: currentRoute.request_body ?? "none",
+        response: currentRoute.response ?? "",
+      });
+    }
+    if (currentGroup !== null && currentRoutes.length > 0) {
+      groups.push({ group: currentGroup, routes: [...currentRoutes] });
     }
   } catch {
     // Fallback: render raw YAML as code
@@ -356,11 +324,44 @@ function ApiDesignViewer({ content }: { content: string }) {
   }
 
   return (
-    <div style={{ fontFamily: '"Geist", sans-serif', display: "flex", flexDirection: "column", gap: "24px" }}>
+    <div style={{ fontFamily: '"Geist", sans-serif', display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Top-level API meta info */}
+      {(baseUrl || format || authHeader) && (
+        <div style={{
+          display: "flex",
+          gap: "16px",
+          flexWrap: "wrap",
+          padding: "10px 14px",
+          background: "#060606",
+          border: "1px solid #1A1A1A",
+          borderRadius: "6px",
+        }}>
+          {baseUrl && (
+            <div>
+              <div style={{ fontSize: "9px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "3px", textTransform: "uppercase" }}>Base URL</div>
+              <div style={{ fontSize: "12px", color: "#60A5FA", fontFamily: '"Geist Mono", monospace', fontWeight: 500 }}>{baseUrl}</div>
+            </div>
+          )}
+          {format && (
+            <div>
+              <div style={{ fontSize: "9px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "3px", textTransform: "uppercase" }}>Format</div>
+              <div style={{ fontSize: "12px", color: "#CCCCCC", fontFamily: '"Geist Mono", monospace', fontWeight: 500 }}>{format.toUpperCase()}</div>
+            </div>
+          )}
+          {authHeader && authHeader !== "none" && (
+            <div>
+              <div style={{ fontSize: "9px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "3px", textTransform: "uppercase" }}>Auth</div>
+              <div style={{ fontSize: "12px", color: "#FBBF24", fontFamily: '"Geist Mono", monospace', fontWeight: 500 }}>{authHeader}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Endpoint groups */}
       {groups.map((g, gi) => (
         <div key={gi}>
           <div style={{
-            fontSize: "10px",
+            fontSize: "11px",
             fontFamily: '"Geist Mono", monospace',
             fontWeight: 600,
             letterSpacing: "1px",
@@ -374,51 +375,67 @@ function ApiDesignViewer({ content }: { content: string }) {
             <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#60A5FA" }} />
             {g.group}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {g.routes.map((r, ri) => {
-              const mc = methodColors[r.method] ?? { bg: "#1A1A1A", color: "#AAAAAA" };
+              const mc = methodColors[r.method.toUpperCase()] ?? { bg: "#1A1A1A", color: "#AAAAAA", label: r.method };
               return (
                 <div key={ri} style={{
-                  padding: "12px 14px",
+                  padding: "14px 16px",
                   background: "#080808",
-                  border: "1px solid #222",
-                  borderRadius: "4px",
+                  border: "1px solid #1E1E1E",
+                  borderRadius: "6px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "6px",
+                  gap: "8px",
+                  transition: "border-color 0.15s ease",
                 }}>
+                  {/* Method + Path + Auth Badge */}
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                     <span style={{
-                      fontSize: "10px",
+                      fontSize: "11px",
                       fontFamily: '"Geist Mono", monospace',
                       fontWeight: 700,
                       letterSpacing: "0.5px",
-                      padding: "3px 8px",
-                      borderRadius: "3px",
+                      padding: "4px 10px",
+                      borderRadius: "4px",
                       background: mc.bg,
                       color: mc.color,
-                      minWidth: "52px",
+                      minWidth: "60px",
                       textAlign: "center",
                     }}>
-                      {r.method}
+                      {r.method.toUpperCase()}
                     </span>
                     <span style={{ fontSize: "13px", color: "#EAEAEA", fontFamily: '"Geist Mono", monospace', fontWeight: 500 }}>
                       {r.path}
                     </span>
-                    {r.auth_required && (
-                      <span style={{ fontSize: "9px", color: "#FBBF24", border: "1px solid #3D2E00", background: "#1A1400", padding: "2px 6px", borderRadius: "3px", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px" }}>
-                        AUTH
-                      </span>
-                    )}
+
                   </div>
-                  <div style={{ fontSize: "12px", color: "#888", lineHeight: "1.5" }}>{r.description}</div>
-                  {r.request_body && r.request_body !== "none" && (
-                    <div style={{ fontSize: "11px", color: "#666", fontFamily: '"Geist Mono", monospace' }}>
-                      <span style={{ color: "#555" }}>body:</span> {r.request_body}
+
+                  {/* Description */}
+                  {r.description && (
+                    <div style={{ fontSize: "12px", color: "#999", lineHeight: "1.6", paddingLeft: "2px" }}>
+                      {r.description}
                     </div>
                   )}
-                  <div style={{ fontSize: "11px", color: "#666", fontFamily: '"Geist Mono", monospace' }}>
-                    <span style={{ color: "#555" }}>returns:</span> {r.response}
+
+                  {/* Request body & Response in a mini-grid */}
+                  <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", paddingLeft: "2px" }}>
+                    {r.request_body && r.request_body !== "none" && r.request_body !== '"none"' && (
+                      <div>
+                        <div style={{ fontSize: "9px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "3px", textTransform: "uppercase" }}>Request Body</div>
+                        <div style={{ fontSize: "12px", color: "#BBBBBB", fontFamily: '"Geist Mono", monospace' }}>
+                          {r.request_body}
+                        </div>
+                      </div>
+                    )}
+                    {r.response && (
+                      <div>
+                        <div style={{ fontSize: "9px", color: "#555", fontFamily: '"Geist Mono", monospace', letterSpacing: "0.5px", marginBottom: "3px", textTransform: "uppercase" }}>Response</div>
+                        <div style={{ fontSize: "12px", color: "#BBBBBB", fontFamily: '"Geist Mono", monospace' }}>
+                          {r.response}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -776,7 +793,7 @@ export default function ChatPanel({
         // This is a result blob containing ALL generated artifacts.
         // Expand every available artifact into its own message so the
         // full generation history is visible when loading a past chat.
-        const allSteps: Step[] = ["config", "docker", "pipeline", "docs", "folder", "db", "references", "apiDesign", "testingPlan"];
+        const allSteps: Step[] = ["config", "docker", "pipeline", "docs", "folder", "db", "apiDesign", "testingPlan"];
 
         // Map steps to their data presence check
         const stepHasData = (s: Step): boolean => {
@@ -787,7 +804,6 @@ export default function ChatPanel({
             case "docs": return !!parsed.markdown;
             case "folder": return !!parsed.folderStructure;
             case "db": return !!parsed.dbSchema;
-            case "references": return Array.isArray(parsed.references) && parsed.references.length > 0;
             case "apiDesign": return !!parsed.apiDesign;
             case "testingPlan": return !!parsed.testingPlan;
             default: return false;
@@ -869,14 +885,6 @@ export default function ChatPanel({
       )
         return "db";
       if (
-        lower.includes("reference") ||
-        lower.includes("resources") ||
-        lower.includes("links") ||
-        lower.includes("show references") ||
-        lower.includes("documentation links")
-      )
-        return "references";
-      if (
         lower.includes("api design") ||
         lower.includes("api spec") ||
         lower.includes("endpoints") ||
@@ -902,7 +910,6 @@ export default function ChatPanel({
   const EXPLORE_OPTIONS = [
     "Show Folder Structure",
     "View DB Schema",
-    "Show References",
     "Show API Design",
     "Show Testing Plan",
   ];
@@ -969,25 +976,6 @@ export default function ChatPanel({
         },
         options: EXPLORE_OPTIONS,
       };
-    if (step === "references") {
-      const refs: Reference[] = data.references ?? [];
-      if (!refs.length)
-        return {
-          content: "No references available for this stack.",
-          file: undefined,
-          options: EXPLORE_OPTIONS,
-        };
-      return {
-        content: `${refs.length} reference${refs.length !== 1 ? "s" : ""} curated for your stack.`,
-        file: {
-          name: "references",
-          language: "references",
-          content: "",
-          references: refs,
-        },
-        options: EXPLORE_OPTIONS,
-      };
-    }
     if (step === "apiDesign") {
       const apiContent = data.apiDesign ?? "";
       if (!apiContent)
@@ -1363,8 +1351,6 @@ export default function ChatPanel({
       );
     if (language === "folder")
       return <FolderStructureViewer content={content} />;
-    if (language === "references")
-      return <ReferencesViewer references={msg.file.references ?? []} />;
     if (language === "apidesign")
       return <ApiDesignViewer content={content} />;
     if (language === "testingplan")
@@ -1698,7 +1684,7 @@ export default function ChatPanel({
                     {msg.file && (
                       <div style={{ marginTop: "20px", border: "1px solid #333", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
                         {renderFileHeader(msg)}
-                        <div style={{ padding: (msg.file.language === "pipeline" || msg.file.language === "dbschema" || msg.file.language === "references" || msg.file.language === "apidesign" || msg.file.language === "testingplan") ? "20px" : "16px", overflowX: "auto" }}>
+                        <div style={{ padding: (msg.file.language === "pipeline" || msg.file.language === "dbschema" || msg.file.language === "apidesign" || msg.file.language === "testingplan") ? "20px" : "16px", overflowX: "auto" }}>
                           {renderFileContent(msg)}
                         </div>
                       </div>

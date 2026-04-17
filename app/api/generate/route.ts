@@ -57,9 +57,8 @@ const TOKEN_BUDGET = {
   config: 500,
   docker: 1200,
   pipeline: 600,
-  markdown: 800,
+  markdown: 3000,
   folderStructure: 600,
-  references: 500,
   apiDesign: 800,
   testingPlan: 700,
 } as const;
@@ -83,20 +82,12 @@ interface DbSchema {
   diagram: string;  // rendered SVG string or image URL from Kroki
 }
 
-interface Reference {
-  title: string;
-  url: string;
-  description: string;
-  category: string; // e.g. "docs", "guide", "tool", "article"
-}
-
 interface GenerateResult {
   yaml: string;
   docker: string;
   pipeline: string;
   markdown: string;
   folderStructure?: string;
-  references?: Reference[];
   dbSchema?: DbSchema;
   apiDesign?: string;
   testingPlan?: string;
@@ -107,7 +98,6 @@ interface RegenerateFlags {
   pipeline: boolean;
   markdown: boolean;
   folderStructure: boolean;
-  references: boolean;
   apiDesign: boolean;
   testingPlan: boolean;
 }
@@ -230,7 +220,6 @@ function detectChanges(oldYaml: string, newYaml: string): RegenerateFlags {
     pipeline: changed.size > 0,
     markdown: changed.size > 0,
     folderStructure: changed.size > 0,
-    references: changed.size > 0,
     apiDesign: changed.size > 0,
     testingPlan: changed.size > 0,
   };
@@ -427,33 +416,165 @@ RULES:
 - Output ONLY the YAML block. Nothing else.
 - Always complete the entire file — never stop mid-block.`;
 
-const MARKDOWN_PROMPT = `You are a senior engineer writing a README.md. Output raw Markdown only — do NOT wrap the full output in a code fence.
+const MARKDOWN_PROMPT = `You are a senior software architect writing a comprehensive project documentation file. Output raw Markdown only — do NOT wrap the full output in a code fence.
 
-Write these sections in order:
+IMPORTANT: Do NOT use any emoji characters anywhere in the document. Use only plain text.
+
+Write ALL of the following sections in order. Each section must be specific to the system described.
 
 # <Project Name>
-A clear one-paragraph overview of what the system does and who it is for.
 
-## Architecture
-2–4 sentences describing the architecture pattern and how the components connect.
+---
 
-## Tech Stack
-A bullet list — one technology per line with a brief one-line description.
+## Overview
+A clear paragraph explaining what the system does, who it is for, and what value it provides.
+
+## Problem Statement
+2-3 sentences describing the problem this system solves and why existing approaches are insufficient.
+
+## Solution
+A concise description of how this system solves the problem. Include what users can do with it.
+
+## Requirements
+
+### Functional Requirements
+- 3-5 bullet points of what the system must do
+
+### Non-Functional Requirements
+- 3-4 bullet points covering performance, scalability, security
+
+## User Stories
+- 3-4 user stories in the format: "As a [role], I want [goal] so that [benefit]"
 
 ## Features
-5–8 bullet points covering the most important features of this system.
+List 6-10 key features with a brief one-line description for each. Group related features under sub-headings if appropriate.
 
-## API Overview
-List the main endpoint groups with one-line descriptions. Skip this section entirely if there is no API.
+## Architecture
 
-## Getting Started
-Numbered steps to run the project locally using Docker Compose.
+### Architecture Pattern
+2-3 sentences describing the architecture pattern (monolith, microservices, serverless) and why it was chosen.
+
+### System Flow
+Describe the high-level data flow through the system using a plain text diagram:
+\`\`\`
+Input -> Processing -> Storage -> Output
+\`\`\`
+
+### Module Breakdown
+List the major modules/components of the system with a one-line description of each.
+
+## Tech Stack
+
+### Frontend
+- List frontend technologies with brief descriptions
+
+### Backend
+- List backend technologies with brief descriptions
+
+### Database
+- List database technologies with brief descriptions
+
+### DevOps and Deployment
+- List deployment technologies with brief descriptions
+
+## User Flow
+Describe the step-by-step user journey through the system using a plain text flow:
+\`\`\`
+Step 1 -> Step 2 -> Step 3 -> Step 4
+\`\`\`
+
+## Auth Plan
+- Describe the authentication strategy
+- Mention token type, session handling, etc.
+
+## Security Plan
+- 3-5 bullet points covering input validation, rate limiting, environment variable security, etc.
+
+## Access Control
+- Describe guest vs authenticated user access
+- Mention any role-based access if applicable
+
+## Performance Plan
+- 3-5 bullet points covering caching, optimization, lazy loading, etc.
+
+## Integrations
+- List external services or APIs the system integrates with
+
+## Data Flow
+Describe how data moves through the system:
+\`\`\`
+User Input -> Backend -> Database -> Response -> UI
+\`\`\`
+
+## API Interaction Flow
+Describe how the frontend communicates with the backend:
+\`\`\`
+Frontend -> API Layer -> Backend -> Response -> UI
+\`\`\`
+
+## Edge Cases
+- 4-6 bullet points covering edge cases like empty input, invalid data, API failures, large payloads
+
+## Validation Strategy
+- Describe input validation, response validation, and error handling approaches
+
+## Testing Plan
+- Unit testing approach
+- Integration testing approach
+- Manual testing scenarios
+
+## Project Structure
+Provide a brief overview of the folder structure:
+\`\`\`
+/src
+  /components
+  /routes
+  /models
+  /services
+\`\`\`
+
+## Roadmap
+### Phase 1
+- Initial features
+
+### Phase 2
+- Core improvements
+
+### Phase 3
+- Advanced features
+
+## DevOps and CI/CD
+- Describe the CI/CD pipeline
+- Mention containerization strategy
+- Deployment targets
+
+## Environment Strategy
+- Development: local
+- Staging: testing
+- Production: live
+
+## Scalability Plan
+- 3-4 bullet points on horizontal scaling, load balancing, stateless backend, etc.
+
+## Limitations
+- 2-3 known limitations of the current design
+
+## Future Scope
+- 3-5 ideas for future enhancements
+
+## Generated Output
+List the artifacts this system generates or produces (e.g., config files, documentation, schemas).
+
+---
 
 RULES:
+- CRITICAL: Do NOT use any emoji characters (no unicode emoji, no emoticons). Use only plain ASCII text.
 - Every line must be specific to this system — no placeholder or filler text.
 - Lines starting with PREV_ are context metadata — do NOT copy them into your output.
 - Output raw Markdown only. No wrapping code fence around the entire document.
-- Always complete the entire document — never stop mid-section.`;
+- Always complete the entire document — never stop mid-section.
+- Use horizontal rules (---) between major sections for visual separation.
+- Use plain text flow diagrams inside code blocks where indicated.`;
 
 const FOLDER_STRUCTURE_PROMPT = `You are a senior software engineer. Given a stack summary, output ONLY a plain-text folder/file tree for the project. No prose, no markdown fences, no explanation.
 
@@ -483,27 +604,6 @@ RULES:
 - Do NOT include node_modules/, __pycache__/, or build artifacts
 - Output ONLY the tree. No commentary before or after.
 - Always complete the entire tree — never stop mid-block.`;
-
-const REFERENCES_PROMPT = `You are a senior engineer. Given a stack summary, output ONLY a valid JSON array of reference links for this specific tech stack. No prose, no markdown fences.
-
-Output this exact JSON structure:
-[
-  {
-    "title": "<doc/resource title>",
-    "url": "<full https:// URL>",
-    "description": "<one sentence — what this link helps with>",
-    "category": "<docs|guide|tool|article>"
-  }
-]
-
-RULES:
-- Output ONLY the JSON array. Nothing before or after.
-- Include 6–10 references total.
-- References must be specific to the technologies in the stack summary (language, framework, database, auth, deployment).
-- Use ONLY real, well-known URLs (official docs, GitHub repos, popular guides). Never invent URLs.
-- Spread across categories: official docs, getting started guides, deployment references, auth guides.
-- Examples of valid URLs: https://expressjs.com/en/starter/hello-world.html, https://docs.docker.com/compose/, https://fastapi.tiangolo.com/tutorial/
-- Output valid JSON only — no trailing commas, no comments.`;
 
 const API_DESIGN_PROMPT = `You are a senior backend engineer. Given a stack summary, output ONLY a valid YAML document describing the API design. No prose, no markdown fences.
 
@@ -574,6 +674,8 @@ RULES:
 - Output ONLY the YAML block. Nothing else.
 - Always complete the entire file — never stop mid-block.`;
 
+const TITLE_PROMPT = `You are an AI assistant. Summarize the user's prompt into a concise 3-4 word title. Respond ONLY with the title. No quotes, no preamble.`;
+
 // ─────────────────────────────────────────────
 // Core helpers
 // ─────────────────────────────────────────────
@@ -612,29 +714,6 @@ function secureHeaders(res: NextResponse): NextResponse {
 
 function errorResponse(error: string, code: string, status: number): NextResponse {
   return secureHeaders(NextResponse.json({ error, code }, { status }));
-}
-
-// ─────────────────────────────────────────────
-// References JSON parser
-// ─────────────────────────────────────────────
-function parseReferences(raw: string): Reference[] {
-  try {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/gim, "")
-      .replace(/```\s*$/gim, "")
-      .trim();
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (r: any) =>
-        typeof r.title === "string" &&
-        typeof r.url === "string" &&
-        r.url.startsWith("http")
-    );
-  } catch {
-    log.warn("References JSON parse failed — returning empty array");
-    return [];
-  }
 }
 
 // ─────────────────────────────────────────────
@@ -694,15 +773,19 @@ async function saveArtifact(sessionId: string, userId: string, type: string, con
   }
 }
 
-async function saveSessionMetadata(sessionId: string, userId: string) {
+async function saveSessionMetadata(sessionId: string, userId: string, title?: string) {
   try {
+    const updateData: any = {
+      userId,
+      updatedAt: new Date(),
+    };
+    if (title) {
+      updateData.title = title;
+    }
     await db
       .collection("sessions")
       .doc(sessionId)
-      .set({
-        userId,
-        updatedAt: new Date(),
-      }, { merge: true });
+      .set(updateData, { merge: true });
   } catch (error) {
     log.error("Failed to save session metadata", { error: String(error), sessionId });
     throw error;
@@ -964,6 +1047,7 @@ export async function POST(req: Request) {
       log.error("GROQ_API_KEY env var not set");
       return errorResponse("Server misconfiguration", "MISSING_API_KEY", 500);
     }
+    const markdownApiKey = process.env.GROQ_API_KEY_MARKDOWN || apiKey;
 
     // ── 3. Session ───────────────────────────────────────────────────────────
     const session = getSession(sessionId);
@@ -981,6 +1065,7 @@ export async function POST(req: Request) {
       : prompt;
 
     const history = trimHistory(session.history);
+    const isFirstMessage = session.history.length === 0;
 
     // ────────────────────────────────────────────────────────────────────────
     // MODIFY MODE
@@ -1004,7 +1089,6 @@ export async function POST(req: Request) {
       let pipeline = session.lastResult.pipeline;
       let markdown = session.lastResult.markdown;
       let folderStructure = session.lastResult.folderStructure;
-      let references = session.lastResult.references;
       let dbSchema = session.lastResult.dbSchema;
       let apiDesign = session.lastResult.apiDesign;
       let testingPlan = session.lastResult.testingPlan;
@@ -1013,7 +1097,6 @@ export async function POST(req: Request) {
       let pipelineResult: { content: string; tokens: number } | null = null;
       let markdownResult: { content: string; tokens: number } | null = null;
       let folderStructureResult: { content: string; tokens: number } | null = null;
-      let referencesResult: { content: string; tokens: number } | null = null;
       let apiDesignResult: { content: string; tokens: number } | null = null;
       let testingPlanResult: { content: string; tokens: number } | null = null;
 
@@ -1042,7 +1125,7 @@ export async function POST(req: Request) {
 
       if (flags.markdown) {
         const ctx = `Project (updated): ${prompt}\nStack summary: ${summarizeYaml(yaml)}`;
-        markdownResult = await callGroq(apiKey, MARKDOWN_PROMPT, ctx, trimHistory(session.history), TOKEN_BUDGET.markdown, "markdown");
+        markdownResult = await callGroq(markdownApiKey, MARKDOWN_PROMPT, ctx, trimHistory(session.history), TOKEN_BUDGET.markdown, "markdown");
         if (markdownResult) {
           markdown = markdownResult.content;
           session.history.push({ role: "assistant", content: compressForHistory(markdown, "markdown") });
@@ -1054,14 +1137,6 @@ export async function POST(req: Request) {
         folderStructureResult = await callGroq(apiKey, FOLDER_STRUCTURE_PROMPT, ctx, trimHistory(session.history), TOKEN_BUDGET.folderStructure, "folderStructure");
         if (folderStructureResult) {
           folderStructure = folderStructureResult.content;
-        }
-      }
-
-      if (flags.references) {
-        const ctx = `Generate reference links for this UPDATED stack: ${summarizeYaml(yaml)}`;
-        referencesResult = await callGroqRaw(apiKey, REFERENCES_PROMPT, ctx, trimHistory(session.history), TOKEN_BUDGET.references, "references");
-        if (referencesResult) {
-          references = parseReferences(referencesResult.content);
         }
       }
 
@@ -1088,7 +1163,6 @@ export async function POST(req: Request) {
       if (flags.pipeline && pipelineResult) totalTokens += pipelineResult.tokens;
       if (flags.markdown && markdownResult) totalTokens += markdownResult.tokens;
       if (flags.folderStructure && folderStructureResult) totalTokens += folderStructureResult.tokens;
-      if (flags.references && referencesResult) totalTokens += referencesResult.tokens;
       if (flags.apiDesign && apiDesignResult) totalTokens += apiDesignResult.tokens;
       if (flags.testingPlan && testingPlanResult) totalTokens += testingPlanResult.tokens;
 
@@ -1101,7 +1175,6 @@ export async function POST(req: Request) {
         pipeline,
         markdown,
         folderStructure,
-        references,
         dbSchema,
         apiDesign,
         testingPlan,
@@ -1142,10 +1215,6 @@ export async function POST(req: Request) {
         await saveArtifact(sessionId, userId, "folderStructure", folderStructure);
         await memoryStore.addArtifact(sessionId, { type: "folderStructure", content: folderStructure, userId });
       }
-      if (references) {
-        await saveArtifact(sessionId, userId, "references", JSON.stringify(references));
-        await memoryStore.addArtifact(sessionId, { type: "references", content: JSON.stringify(references), userId });
-      }
       if (apiDesign) {
         await saveArtifact(sessionId, userId, "apiDesign", apiDesign);
         await memoryStore.addArtifact(sessionId, { type: "apiDesign", content: apiDesign, userId });
@@ -1155,8 +1224,16 @@ export async function POST(req: Request) {
         await memoryStore.addArtifact(sessionId, { type: "testingPlan", content: testingPlan, userId });
       }
 
-      await saveSessionMetadata(sessionId, userId);
-      await memoryStore.updateSession(sessionId, { userId });
+      let generatedTitle = undefined;
+      if (isFirstMessage) {
+        const titleRes = await callGroqRaw(apiKey, TITLE_PROMPT, prompt, [], 15, "title");
+        if (titleRes?.content) {
+          generatedTitle = titleRes.content.replace(/["']/g, "").trim();
+        }
+      }
+
+      await saveSessionMetadata(sessionId, userId, generatedTitle);
+      await memoryStore.updateSession(sessionId, { userId, ...(generatedTitle && { title: generatedTitle }) });
 
       return secureHeaders(NextResponse.json(result));
     }
@@ -1198,7 +1275,7 @@ export async function POST(req: Request) {
     // Step 4 — Markdown docs
     const markdownCtx = `Project description: ${prompt}\nStack summary: ${stackSummary}`;
     const markdownResult = await callGroq(
-      apiKey, MARKDOWN_PROMPT, markdownCtx, trimHistory(session.history), TOKEN_BUDGET.markdown, "markdown"
+      markdownApiKey, MARKDOWN_PROMPT, markdownCtx, trimHistory(session.history), TOKEN_BUDGET.markdown, "markdown"
     );
     if (!markdownResult) return errorResponse("Docs generation failed", "LLM_ERROR", 500);
     const markdown = markdownResult.content;
@@ -1211,14 +1288,7 @@ export async function POST(req: Request) {
     );
     const folderStructure = folderStructureResult?.content ?? "";
 
-    // Step 6 — References (non-blocking, raw JSON)
-    const referencesCtx = `Generate reference links for this stack: ${stackSummary}`;
-    const referencesRaw = await callGroqRaw(
-      apiKey, REFERENCES_PROMPT, referencesCtx, trimHistory(session.history), TOKEN_BUDGET.references, "references"
-    );
-    const references = referencesRaw ? parseReferences(referencesRaw.content) : [];
-
-    // Step 7 — API Design
+    // Step 6 — API Design
     const apiDesignCtx = `Generate API design for this stack: ${stackSummary}`;
     const apiDesignResult = await callGroq(
       apiKey, API_DESIGN_PROMPT, apiDesignCtx, trimHistory(session.history), TOKEN_BUDGET.apiDesign, "apiDesign"
@@ -1251,7 +1321,6 @@ export async function POST(req: Request) {
       pipelineResult.tokens +
       markdownResult.tokens +
       (folderStructureResult?.tokens ?? 0) +
-      (referencesRaw?.tokens ?? 0) +
       (apiDesignResult?.tokens ?? 0) +
       (testingPlanResult?.tokens ?? 0);
 
@@ -1264,7 +1333,6 @@ export async function POST(req: Request) {
       pipeline: safeYaml(pipeline),
       markdown,
       folderStructure,
-      references,
       ...(dbSchema ? { dbSchema } : {}),
       ...(apiDesign ? { apiDesign } : {}),
       ...(testingPlan ? { testingPlan } : {}),
@@ -1299,10 +1367,6 @@ export async function POST(req: Request) {
       await saveArtifact(sessionId, userId, "folderStructure", folderStructure);
       await memoryStore.addArtifact(sessionId, { type: "folderStructure", content: folderStructure, userId });
     }
-    if (references.length > 0) {
-      await saveArtifact(sessionId, userId, "references", JSON.stringify(references));
-      await memoryStore.addArtifact(sessionId, { type: "references", content: JSON.stringify(references), userId });
-    }
     if (apiDesign) {
       await saveArtifact(sessionId, userId, "apiDesign", apiDesign);
       await memoryStore.addArtifact(sessionId, { type: "apiDesign", content: apiDesign, userId });
@@ -1312,8 +1376,16 @@ export async function POST(req: Request) {
       await memoryStore.addArtifact(sessionId, { type: "testingPlan", content: testingPlan, userId });
     }
 
-    await saveSessionMetadata(sessionId, userId);
-    await memoryStore.updateSession(sessionId, { userId });
+    let generatedTitle = undefined;
+    if (isFirstMessage) {
+      const titleRes = await callGroqRaw(apiKey, TITLE_PROMPT, prompt, [], 15, "title");
+      if (titleRes?.content) {
+        generatedTitle = titleRes.content.replace(/["']/g, "").trim();
+      }
+    }
+
+    await saveSessionMetadata(sessionId, userId, generatedTitle);
+    await memoryStore.updateSession(sessionId, { userId, ...(generatedTitle && { title: generatedTitle }) });
 
     return secureHeaders(NextResponse.json(result));
 

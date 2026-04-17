@@ -53,12 +53,14 @@ export async function GET(req: Request) {
         
         userMessages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         const lastUserMessage = userMessages[0]?.content;
+        
+        let displayTitle = sessionData.title || lastUserMessage;
 
         return {
           sessionId,
           updatedAt: sessionData.updatedAt?.toDate() || new Date(),
           messageCount: allMessagesSnapshot.size,
-          lastMessage: lastUserMessage
+          lastMessage: displayTitle || null
         };
       })
     );
