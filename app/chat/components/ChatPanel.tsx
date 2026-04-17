@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { getSessionId } from "@/app/api/generate/Sessionid";
+import { getSessionId, resetSessionId } from "@/app/api/generate/Sessionid";
 import DbSchemaViewer from "@/app/chat/components/DbSchemaViewer";
 import PipelineViewer from "@/app/chat/components/PipelineViewer";
 
@@ -680,20 +680,41 @@ export default function ChatPanel({
   const loadChatHistory = async () => {
     if (!isSignedIn) return;
 
+    // If no sessionId prop (user is on /chat), show a blank chat — don't load history
+    if (!sessionId) {
+      setMessages([]);
+      setGeneratedData(null);
+      setHasGeneratedConfig(false);
+      setIsModifyMode(false);
+      return;
+    }
+
     setMessages([]);
     setGeneratedData(null);
     setHasGeneratedConfig(false);
     setIsModifyMode(false);
 
     try {
-      const currentSessionId = sessionId || getSessionId();
+      const currentSessionId = sessionId;
       const messagesResponse = await fetch(
         `/api/chat-history?sessionId=${currentSessionId}`
       );
       if (!messagesResponse.ok) return;
 
       const messagesData = await messagesResponse.json();
-      const rawMessages: any[] = messagesData?.messages || [];
+      const rawMessagesAll: any[] = messagesData?.messages || [];
+
+      // ── Deduplicate consecutive messages with same role + content ──────
+      // Firestore can end up with duplicates when the same prompt is sent
+      // twice (e.g. quick double-press). Strip them so the UI stays clean.
+      const rawMessages: any[] = [];
+      for (const msg of rawMessagesAll) {
+        const prev = rawMessages[rawMessages.length - 1];
+        if (prev && prev.role === msg.role && prev.content === msg.content) {
+          continue; // skip duplicate
+        }
+        rawMessages.push(msg);
+      }
 
       // ── Find the latest complete result blob ──────────────────────────────
       // We want the LAST assistant message that contains a full result
@@ -714,6 +735,9 @@ export default function ChatPanel({
 
       // ── Build the visible message list ────────────────────────────────────
       const historyMessages: Message[] = [];
+      // Track config state locally during reconstruction — we can't rely on
+      // the React state `hasGeneratedConfig` because it's still `false` here.
+      let localHasConfig = false;
 
       for (const msg of rawMessages) {
         const ts = new Date(
@@ -721,7 +745,6 @@ export default function ChatPanel({
         ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
         if (msg.role === "user") {
-          // Always show user messages as-is
           historyMessages.push({
             id: msg.id,
             role: "user",
@@ -750,40 +773,52 @@ export default function ChatPanel({
           continue;
         }
 
-        // This is a result blob. We need to figure out which "step" it was
-        // shown at. Strategy: look at the user message immediately before it
-        // and use detectStep() on that text. If there's no prior user message,
-        // default to "config" (the initial generation).
-        const msgIndex = rawMessages.indexOf(msg);
-        const precedingUser = rawMessages
-          .slice(0, msgIndex)
-          .filter((m: any) => m.role === "user")
-          .pop();
+        // This is a result blob containing ALL generated artifacts.
+        // Expand every available artifact into its own message so the
+        // full generation history is visible when loading a past chat.
+        const allSteps: Step[] = ["config", "docker", "pipeline", "docs", "folder", "db", "references", "apiDesign", "testingPlan"];
 
-        // Temporarily set hasGeneratedConfig based on whether there was
-        // already a yaml result before this message.
-        const isFirst = historyMessages.every(
-          (m) => !m.file || m.file.language !== "yaml"
-        );
+        // Map steps to their data presence check
+        const stepHasData = (s: Step): boolean => {
+          switch (s) {
+            case "config": return !!parsed.yaml;
+            case "docker": return !!parsed.docker;
+            case "pipeline": return !!parsed.pipeline;
+            case "docs": return !!parsed.markdown;
+            case "folder": return !!parsed.folderStructure;
+            case "db": return !!parsed.dbSchema;
+            case "references": return Array.isArray(parsed.references) && parsed.references.length > 0;
+            case "apiDesign": return !!parsed.apiDesign;
+            case "testingPlan": return !!parsed.testingPlan;
+            default: return false;
+          }
+        };
 
-        const userText: string = precedingUser?.content ?? "";
-        const step = detectStep(userText);
+        let stepIndex = 0;
+        for (const step of allSteps) {
+          if (!stepHasData(step)) continue;
 
-        const { content, file, options } = buildAssistantMessage(
-          step,
-          parsed,
-          isFirst,
-          false
-        );
+          const isFirstConfig = step === "config" && !localHasConfig;
+          const { content, file } = buildAssistantMessage(
+            step,
+            parsed,
+            isFirstConfig,
+            false
+          );
 
-        historyMessages.push({
-          id: msg.id,
-          role: "assistant",
-          content,
-          timestamp: ts,
-          file,
-          options,
-        });
+          if (step === "config" && isFirstConfig) {
+            localHasConfig = true;
+          }
+
+          historyMessages.push({
+            id: `${msg.id}-${step}`,
+            role: "assistant",
+            content,
+            timestamp: ts,
+            file,
+          });
+          stepIndex++;
+        }
       }
 
       setMessages(historyMessages);
@@ -1038,6 +1073,13 @@ export default function ChatPanel({
     const textToSend = (overrideInput ?? input).trim();
     if (!textToSend) return;
     const step = detectStep(textToSend);
+
+    // If no sessionId prop (user is on /chat), create a brand new session
+    const currentSessionId = sessionId || resetSessionId();
+    if (!sessionId) {
+      window.history.replaceState(null, "", `/chat/${currentSessionId}`);
+    }
+
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
@@ -1066,7 +1108,7 @@ export default function ChatPanel({
             body: JSON.stringify({
               prompt: textToSend,
               mode: isModifyMode ? "modify" : "generate",
-              sessionId: sessionId || getSessionId(),
+              sessionId: currentSessionId,
             }),
           });
           if (!res.ok) throw new Error(`API error: ${res.status}`);
