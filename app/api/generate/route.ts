@@ -33,9 +33,10 @@ import { NextResponse } from "next/server";
 import YAML from "yaml";
 import { auth } from "@clerk/nextjs/server";
 import { memoryStore } from "@/lib/memory-store";
-import { db } from "@/lib/firebase-admin";
+import { db, createOrUpdateUser } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { getOrCreateQuota, deductTokens } from "@/lib/token-quota";
+import { getFullUserData } from "@/lib/auth";
 
 // ─────────────────────────────────────────────
 // Constants
@@ -995,6 +996,10 @@ export async function POST(req: Request) {
     if (!userId) {
       return new Response("Unauthorized", { status: 401 });
     }
+
+    // Get comprehensive user data and ensure user exists in Firebase users collection
+    const fullUserData = await getFullUserData();
+    await createOrUpdateUser(userId, fullUserData);
 
     const quota = await getOrCreateQuota(userId);
     if (quota.exhausted || quota.tokensUsed >= quota.tokensLimit) {

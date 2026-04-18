@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/lib/firebase-admin";
+import { db, createOrUpdateUser } from "@/lib/firebase-admin";
+import { getFullUserData } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
@@ -9,6 +10,10 @@ export async function GET(req: Request) {
     if (!userId) {
       return new Response("Unauthorized", { status: 401 });
     }
+
+    // Get comprehensive user data and ensure user exists in Firebase users collection
+    const fullUserData = await getFullUserData();
+    await createOrUpdateUser(userId, fullUserData);
 
     // Get all sessions for this user (no orderBy to avoid index requirement)
     let sessionsSnapshot;
