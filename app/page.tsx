@@ -79,7 +79,7 @@ export default function LaunchingSoonPage() {
 
           {/* CLERK CONDITIONAL RENDERING */}
           {isSignedIn === false && (
-            <Link href="/login" style={{ textDecoration: "none" }}>
+            <Link href="/signup" style={{ textDecoration: "none" }}>
               <button
                 style={{
                   background: "transparent",
