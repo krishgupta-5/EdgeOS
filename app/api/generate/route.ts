@@ -84,13 +84,13 @@ interface DbSchema {
 }
 
 interface GenerateResult {
-  yaml: string;
-  docker: string;
-  pipeline: string;
   markdown: string;
-  folderStructure?: string;
-  dbSchema?: DbSchema;
+  yaml: string;
+  pipeline: string;
+  docker: string;
   apiDesign?: string;
+  dbSchema?: DbSchema;
+  folderStructure?: string;
   testingPlan?: string;
 }
 

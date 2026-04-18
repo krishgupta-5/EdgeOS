@@ -38,7 +38,7 @@ interface ChatPanelProps {
   onShowLoginModal?: (show: boolean) => void;
 }
 
-type Step = "config" | "docker" | "pipeline" | "docs" | "db" | "folder" | "apiDesign" | "testingPlan";
+type Step = "docs" | "config" | "pipeline" | "docker" | "apiDesign" | "db" | "folder" | "testingPlan";
 
 // ─────────────────────────────────────────────
 // Copy Button
@@ -570,7 +570,6 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [hasGeneratedConfig, setHasGeneratedConfig] = useState(false);
-  const [isModifyMode, setIsModifyMode] = useState(false);
 
   // Real token quota state
   const [tokenQuota, setTokenQuota] = useState<{
@@ -702,14 +701,12 @@ export default function ChatPanel({
         setMessages([]);
         setGeneratedData(null);
         setHasGeneratedConfig(false);
-        setIsModifyMode(false);
         return;
       }
 
       setMessages([]);
       setGeneratedData(null);
       setHasGeneratedConfig(false);
-      setIsModifyMode(false);
 
       try {
         const currentSessionId = sessionId;
@@ -793,7 +790,7 @@ export default function ChatPanel({
           // This is a result blob containing ALL generated artifacts.
           // Expand every available artifact into its own message so the
           // full generation history is visible when loading a past chat.
-          const allSteps: Step[] = ["config", "docker", "pipeline", "docs", "folder", "db", "apiDesign", "testingPlan"];
+          const allSteps: Step[] = ["docs", "config", "pipeline", "docker", "apiDesign", "db", "folder", "testingPlan"];
 
           // Map steps to their data presence check
           const stepHasData = (s: Step): boolean => {
@@ -814,15 +811,14 @@ export default function ChatPanel({
           for (const step of allSteps) {
             if (!stepHasData(step)) continue;
 
-            const isFirstConfig = step === "config" && !localHasConfig;
+            const isFirstDocs = step === "docs" && !localHasConfig;
             const { content, file } = buildAssistantMessage(
               step,
               parsed,
-              isFirstConfig,
-              false
+              isFirstDocs,
             );
 
-            if (step === "config" && isFirstConfig) {
+            if (step === "config") {
               localHasConfig = true;
             }
 
@@ -853,14 +849,17 @@ export default function ChatPanel({
 
   const detectStep = (text: string, forceHasConfig = false): Step => {
     const lower = text.toLowerCase();
-    const configIsSet = forceHasConfig || isModifyMode;
-    if (isModifyMode) return "config";
 
-    if (configIsSet || hasGeneratedConfig) {
-      if (lower.includes("docker"))
-        return "docker";
-      if (lower.includes("pipeline") || lower.includes("show pipeline"))
-        return "pipeline";
+    // "Generate Config" must be reachable after docs step
+    if (
+      lower.includes("generate config") ||
+      lower.includes("system config")
+    )
+      return "config";
+
+    const configIsSet = forceHasConfig || hasGeneratedConfig;
+
+    if (configIsSet) {
       if (
         lower.includes("docs") ||
         lower.includes("documentation") ||
@@ -868,22 +867,10 @@ export default function ChatPanel({
         lower.includes("generate docs")
       )
         return "docs";
-      if (
-        lower.includes("folder") ||
-        lower.includes("file structure") ||
-        lower.includes("project structure") ||
-        lower.includes("directory") ||
-        lower.includes("show folder")
-      )
-        return "folder";
-      if (
-        lower.includes("db schema") ||
-        lower.includes("database schema") ||
-        lower.includes("view db") ||
-        lower.includes("show db") ||
-        lower.includes("show schema")
-      )
-        return "db";
+      if (lower.includes("pipeline") || lower.includes("show pipeline"))
+        return "pipeline";
+      if (lower.includes("docker"))
+        return "docker";
       if (
         lower.includes("api design") ||
         lower.includes("api spec") ||
@@ -893,6 +880,22 @@ export default function ChatPanel({
       )
         return "apiDesign";
       if (
+        lower.includes("db schema") ||
+        lower.includes("database schema") ||
+        lower.includes("view db") ||
+        lower.includes("show db") ||
+        lower.includes("show schema")
+      )
+        return "db";
+      if (
+        lower.includes("folder") ||
+        lower.includes("file structure") ||
+        lower.includes("project structure") ||
+        lower.includes("directory") ||
+        lower.includes("show folder")
+      )
+        return "folder";
+      if (
         lower.includes("test") ||
         lower.includes("testing") ||
         lower.includes("test plan") ||
@@ -900,39 +903,34 @@ export default function ChatPanel({
         lower.includes("show tests")
       )
         return "testingPlan";
-      if (lower.includes("continue"))
-        return "docker";
     }
 
-    return "config";
+    return "docs";
   };
 
   const EXPLORE_OPTIONS = [
-    "Show Folder Structure",
     "View DB Schema",
     "Show API Design",
+    "Show Folder Structure",
     "Show Testing Plan",
   ];
 
   const buildAssistantMessage = (
     step: Step,
     data: any,
-    isFirstConfig: boolean,
-    modifying: boolean,
+    isFirstDocs: boolean,
   ): { content: string; file: Message["file"]; options: string[] } => {
     if (step === "config")
       return {
-        content: modifying
-          ? "Configuration updated based on your changes.\nReady to continue whenever you are."
-          : isFirstConfig
-            ? "System config generated.\nModify parameters below or proceed to Docker setup."
-            : "System config loaded.",
+        content: isFirstDocs
+          ? "System config generated.\nProceed to generate documentation or explore artifacts below."
+          : "System config loaded.",
         file: {
           name: "system-config.yaml",
           language: "yaml",
           content: data.yaml,
         },
-        options: modifying ? ["Continue"] : ["Continue", "Modify"],
+        options: ["Show Pipeline"],
       };
     if (step === "docker")
       return {
@@ -943,7 +941,7 @@ export default function ChatPanel({
           language: "yaml",
           content: data.docker,
         },
-        options: ["Show Pipeline"],
+        options: ["Show API Design"],
       };
     if (step === "pipeline")
       return {
@@ -954,7 +952,7 @@ export default function ChatPanel({
           language: "pipeline",
           content: data.pipeline,
         },
-        options: ["Generate Docs"],
+        options: ["Show Docker"],
       };
     if (step === "docs")
       return {
@@ -964,7 +962,7 @@ export default function ChatPanel({
           language: "markdown",
           content: data.markdown,
         },
-        options: EXPLORE_OPTIONS,
+        options: ["System config"],
       };
     if (step === "folder")
       return {
@@ -974,7 +972,7 @@ export default function ChatPanel({
           language: "folder",
           content: data.folderStructure ?? "Folder structure not available.",
         },
-        options: EXPLORE_OPTIONS,
+        options: ["Show Testing Plan"],
       };
     if (step === "apiDesign") {
       const apiContent = data.apiDesign ?? "";
@@ -982,7 +980,7 @@ export default function ChatPanel({
         return {
           content: "API design not available for this stack.",
           file: undefined,
-          options: EXPLORE_OPTIONS,
+          options: ["View DB Schema"],
         };
       return {
         content: "API design specification generated. Endpoints, methods, and auth requirements mapped.",
@@ -991,7 +989,7 @@ export default function ChatPanel({
           language: "apidesign",
           content: apiContent,
         },
-        options: EXPLORE_OPTIONS,
+        options: ["View DB Schema"],
       };
     }
     if (step === "testingPlan") {
@@ -1000,7 +998,7 @@ export default function ChatPanel({
         return {
           content: "Testing plan not available for this stack.",
           file: undefined,
-          options: EXPLORE_OPTIONS,
+          options: EXPLORE_OPTIONS, 
         };
       return {
         content: "Testing plan generated. Unit, integration, and E2E strategy defined.",
@@ -1009,7 +1007,7 @@ export default function ChatPanel({
           language: "testingplan",
           content: testContent,
         },
-        options: EXPLORE_OPTIONS,
+        options: EXPLORE_OPTIONS,  
       };
     }
     // db step
@@ -1018,7 +1016,7 @@ export default function ChatPanel({
         content:
           'ERR: DB schema not responding.\n\nDiagnostics:\n- n8n webhook timeout\n- "Respond to Webhook" node disconnected\n- N8N_WEBHOOK_URL missing in .env.local\n\nVerify workflow and retry.',
         file: undefined,
-        options: EXPLORE_OPTIONS,
+        options: ["Show Folder Structure"],
       };
     return {
       content: "Database schema rendered via n8n → Gemini → Kroki.",
@@ -1031,7 +1029,7 @@ export default function ChatPanel({
           diagram: data.dbSchema.diagram ?? "",
         },
       },
-      options: EXPLORE_OPTIONS,
+      options: ["Show Folder Structure"],
     };
   };
 
@@ -1086,7 +1084,7 @@ export default function ChatPanel({
 
     try {
       let data = generatedData;
-      const needsFreshData = !data || isModifyMode || step === "config";
+      const needsFreshData = !data;
       if (needsFreshData) {
         let res;
         try {
@@ -1095,7 +1093,6 @@ export default function ChatPanel({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               prompt: textToSend,
-              mode: isModifyMode ? "modify" : "generate",
               sessionId: currentSessionId,
             }),
           });
@@ -1128,14 +1125,13 @@ export default function ChatPanel({
         }
         setGeneratedData(data);
       }
-      const isFirstConfig = !hasGeneratedConfig;
-      const { content, file, options } = buildAssistantMessage(
+      const isFirstDocs = !hasGeneratedConfig;      const { content, file, options } = buildAssistantMessage(
         step,
         data,
-        isFirstConfig,
-        isModifyMode,
+        isFirstDocs,
       );
-      if (step === "config" && isFirstConfig) setHasGeneratedConfig(true);
+      // Mark config as generated after config step so subsequent steps unlock
+      if (step === "config") setHasGeneratedConfig(true);
       setMessages((prev) => [
         ...prev,
         {
@@ -1150,7 +1146,6 @@ export default function ChatPanel({
           options,
         },
       ]);
-      setIsModifyMode(false);
     } catch (err) {
       console.error(err);
       setMessages((prev) => [
@@ -1706,19 +1701,6 @@ export default function ChatPanel({
                                 key={i}
                                 onClick={() => {
                                   if (isClicked) return;
-                                  if (option.toLowerCase() === "modify") {
-                                    setIsModifyMode(true);
-                                    setMessages((prev) => [
-                                      ...prev,
-                                      {
-                                        id: Date.now().toString(),
-                                        role: "assistant",
-                                        content: "Tell me what you want to change in the configuration.",
-                                        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                                      },
-                                    ]);
-                                    return;
-                                  }
                                   handleSend(option);
                                 }}
                                 style={{
