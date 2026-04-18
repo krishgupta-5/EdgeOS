@@ -62,7 +62,7 @@ export default function FileContentRenderer({
     );
   if (language === "pipeline")
     return (
-      <div style={{ minHeight: "400px", width: "100%", position: "relative" }}>
+      <div style={{ width: "100%", position: "relative" }}>
         <PipelineViewer
           content={content}
           msgId={msg.id}
@@ -81,17 +81,19 @@ export default function FileContentRenderer({
     return <TestingPlanViewer content={content} />;
   if (language === "markdown")
     return markdownMode[msg.id] === "code" ? (
-      <pre style={{ margin: 0, fontSize: "12px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", color: "#CCCCCC" }}>
-        <CodeRenderer content={content} />
+      <pre style={{ margin: 0, fontSize: "13px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", color: "#CCCCCC" }}>
+        <CodeRenderer content={content} language="markdown" />
       </pre>
     ) : (
-      <div style={{ margin: 0, fontSize: "13px", lineHeight: "1.65" }}>
+      <div style={{ margin: 0, fontSize: "14px", lineHeight: "1.65" }}>
         <MarkdownRenderer content={content} />
       </div>
     );
+    
+  // FIX: Added `language` prop to CodeRenderer and nice padding/background
   return (
-    <pre style={{ margin: 0, fontSize: "12px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", background: "#000" }}>
-      <CodeRenderer content={content} />
+    <pre style={{ margin: 0, padding: "20px", fontSize: "13px", fontFamily: '"Geist Mono", monospace', lineHeight: "1.65", whiteSpace: "pre", background: "#050505", borderRadius: "0 0 8px 8px" }}>
+      <CodeRenderer content={content} language={language} />
     </pre>
   );
 }
