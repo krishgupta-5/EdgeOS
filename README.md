@@ -1,39 +1,39 @@
-# Web-Based AI-Assisted OS Image Builder for Intel Edge AI Suites
+# EDGE-OS // CORE
 
-A sophisticated web application that leverages artificial intelligence to generate customized OS configurations and deployment setups for Intel Edge AI hardware. This tool simplifies the complex process of creating edge AI deployments by providing intelligent recommendations and automated configuration generation.
+A unified, AI-native environment that consolidates architecture design, code generation, and cloud deployment into a single, seamless terminal experience. EDGE-OS serves as an AI Architect Copilot, instantly generating complete, production-ready blueprints for web applications, SaaS platforms, and backend APIs.
 
-## 🚀 Features
+## Features
 
-- **AI-Powered Configuration**: Uses Google's Gemini AI to generate hardware-optimized configurations
-- **Multi-Device Support**: Supports various Intel Edge AI devices including Jetson, Intel NUC, and Raspberry Pi
-- **Template Library**: Pre-built templates for common edge AI use cases
-- **Real-time Generation**: Instant YAML and Docker Compose file generation
-- **Pipeline Designer**: Automated ML pipeline creation with drag-and-drop interface
-- **Device Recommendations**: Intelligent hardware suggestions based on use case requirements
+- **AI-Powered Architecture Co-Pilot**: Uses advanced LLMs (Groq / Google Gemini) to generate comprehensive software architectures.
+- **YAML Generation**: Instantly generates Docker Compose files, CI/CD pipelines, and core system configurations.
+- **Comprehensive Documentation**: Automatically drafts structural Markdown documentation outlining the problem statement, architecture patterns, tech stack, and testing features.
+- **Folder Structure generation**: Generates ASCII trees mapping out the folder and file structures for different frameworks (Node.js, Go, Python, etc.).
+- **API Design**: Pre-defines your core API endpoints, authorization groups, and payload shapes.
+- **Testing Plans**: Generates unit, integration, and End-to-End testing strategies dynamically based on your software stack.
+- **Database ERD Diagramming**: Integrates with n8n and Kroki to visualize Entity-Relationship Diagrams directly within the interface.
+- **Persistent Sessions**: Chat history, sessions, and artifacts are safely preserved using Firebase.
+- **Authentication**: Seamless flow and user management handled by Clerk.
+- **Token Quota System**: Rate-limiting and LLM token budgets managed dynamically across user sessions.
 
-## 🏗️ Architecture
+## Tech Stack
 
-The application generates three key configuration files:
-
-1. **edge-config.yaml** - Hardware and system specifications
-2. **docker-compose.yaml** - Container deployment configuration  
-3. **pipeline.yaml** - Data processing pipeline definition
-
-## 🛠️ Tech Stack
-
-- **Frontend**: Next.js 16.2.0 with React 19.2.4
-- **Styling**: Tailwind CSS 4.0
-- **AI Integration**: Google Gemini 2.5 Flash API
+- **Frontend**: Next.js 16.2.0 (App Router), React 19.2.4
 - **Language**: TypeScript
-- **Package Manager**: npm
+- **Styling**: Tailwind CSS 4.0
+- **Database & Storage**: Firebase
+- **Authentication**: Clerk
+- **AI Integrations**: Groq API / Google Gemini API
+- **Diagramming Workflow**: n8n, Kroki, Mermaid.js
+- **Package Manager**: npm / yarn
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Node.js 18+ 
-- npm or yarn
-- Google Gemini API Key (optional - demo mode available without API key)
+- Clerk API Keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`)
+- Firebase Admin Configuration
+- Groq / Google Gemini API Keys
 
-## 🚀 Getting Started
+## Getting Started
 
 1. **Clone the repository**
    ```bash
@@ -49,11 +49,7 @@ The application generates three key configuration files:
    ```
 
 3. **Set up environment variables**
-   ```bash
-   cp .env.example .env.local
-   # Add your Gemini API key to .env.local
-   # GEMINI_API_KEY=your_api_key_here
-   ```
+   Create a `.env.local` file and add your configuration details regarding Clerk, Firebase, and AI API Keys.
 
 4. **Run the development server**
    ```bash
@@ -65,87 +61,49 @@ The application generates three key configuration files:
 5. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
-## 🎯 Usage
+## Application Structure
 
-### Using Templates
-1. Browse the template gallery on the main page
-2. Select a template that matches your use case (Retail Analytics, Traffic Monitoring, etc.)
-3. View the generated configurations in the workspace
-
-### AI Assistant Chat
-1. Use the AI Architect Copilot chat interface
-2. Describe your edge AI use case in natural language
-3. The AI will generate optimized configurations for your specific needs
-
-### Generated Files
-- **Left Panel**: AI chat interface for custom requests
-- **Right Panel**: Generated YAML configurations with syntax highlighting
-- **Target Device**: Recommended hardware displayed prominently
-
-## 📁 Project Structure
+The application follows the Next.js App Router pattern:
 
 ```
 ├── app/
-│   ├── api/generate/     # API route for AI generation
-│   ├── globals.css       # Global styles
-│   ├── layout.tsx        # Root layout
-│   └── page.tsx          # Main application page
-├── components/
-│   ├── Header.tsx        # Application header
-│   ├── TemplateGrid.tsx  # Template gallery
-│   ├── YamlViewer.tsx    # Code display component
-│   └── ChatBox.tsx       # AI chat interface
-├── public/               # Static assets
-└── lib/                  # Utility functions
+│   ├── (auth)/             # Clerk-based authentication routes
+│   ├── api/                # Backend API services
+│   │   ├── auth/           # Clerk webhook endpoints
+│   │   ├── chat-history/   # Retrieval of Firebase chat histories
+│   │   ├── generate/       # Multi-agent LLM abstraction handling artifact creation
+│   │   ├── sessions/       # Load, list, and export sessions
+│   │   └── token-quota/    # Rate limit and quota validations
+│   ├── chat/               # The AI architectural workspace
+│   ├── pricing/            # Subscription plans and billing details
+│   ├── settings/           # User configurations and AI parameter toggles
+│   ├── privacy/            # Privacy Policy
+│   ├── terms/              # Terms of Service
+│   ├── globals.css         # Global tailwind imports and base styles
+│   ├── layout.tsx          # Root Application Layout
+│   └── page.tsx            # EDGE-OS landing page
+├── components/             # Reusable UI configurations
+├── lib/                    # Core utilities (Firebase Admin, Memory Store, etc)
+└── package.json            # Scripts & dependencies
 ```
 
-## 🔧 Configuration
+## Generated Artifacts
 
-### Supported Devices
-- **Raspberry Pi 4**: Lightweight IoT and audio applications
-- **Intel NUC**: Financial analytics and industrial applications
-- **Jetson Nano**: Video AI ≤30 FPS
-- **Jetson Orin**: Video AI >30 FPS and multi-model deployments
-- **GPU Server**: Heavy workloads and cloud offloading
+When engaging with the EDGE-OS AI Architect Copilot, it manages the creation of multiple critical artifacts:
+- **System Config**: High-level specification mapping frontend, backend, DBs, Auth, and CI/CD.
+- **Docker Compose**: Ready-to-go `docker-compose.yaml` configured strictly to the inferred stack.
+- **Pipeline**: CI/CD and multi-step execution flows defined via YAML.
+- **Markdown Docs**: Ready-to-share standard project documentation for your target codebase.
+- **Folder Structure**: A well-structured foundational file mapping.
+- **API Design**: Core structural mappings of expected endpoints and CRUD boundaries.
+- **Testing Plan**: A comprehensive outline of UI flow assertions and unit testing dependencies targeting the exact stack inferred.
+- **DB Schema**: Entity Relationship Diagrams modeled dynamically to match the backend choices.
 
-### Supported Use Cases
-- Retail Analytics
-- Traffic Monitoring
-- Financial Analytics
-- Industrial IoT
-- Audio Processing
-- NLP Applications
-- Anomaly Detection
+## Deployment
 
-## 🐳 Docker Integration
+The application naturally ships as a container or as standard Next.js build elements.
 
-The application generates production-ready Docker Compose files including:
-- Optimized inference containers (TensorRT, ONNX Runtime)
-- RTSP streaming servers for video applications
-- MQTT brokers for IoT communications
-- Grafana dashboards for monitoring
-- PostgreSQL/Redis for data persistence
-
-## 🤖 AI Features
-
-The AI assistant can:
-- Analyze use case requirements
-- Recommend optimal hardware configurations
-- Generate device-specific optimizations
-- Create multi-step ML pipelines
-- Provide deployment best practices
-
-## 📊 Pipeline Generation
-
-Automatically generates ML pipelines with:
-- **Input**: Data ingestion (RTSP, API, sensors)
-- **Processing**: Model inference and data transformation
-- **Output**: Results storage and notifications
-- **Error Handling**: Retry mechanisms and alerting
-
-## 🚀 Deployment
-
-### Production Build
+### Standard Build
 ```bash
 npm run build
 npm start
@@ -153,43 +111,12 @@ npm start
 
 ### Docker Deployment
 ```bash
-docker build -t ai-os-builder .
-docker run -p 3000:3000 ai-os-builder
+docker build -t edge-os-core .
+docker run -p 3000:3000 edge-os-core
 ```
 
-## 🧪 Testing
+## Troubleshooting
 
-The application includes demo mode functionality that works without API keys:
-- Pre-configured responses for common use cases
-- Fallback configuration generators
-- Validation and error handling
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is part of the Google Summer of Code (GSOC) program.
-
-## 🔗 Related Resources
-
-- [Intel Edge AI Suites](https://www.intel.com/content/www/us/en/developer/topic-technology/edge-ai/overview.html)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Google Gemini API](https://ai.google.dev/)
-- [Docker Compose](https://docs.docker.com/compose/)
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-1. **API Key Issues**: Ensure your Gemini API key is properly set in `.env.local`
-2. **Build Errors**: Clear the `.next` folder and reinstall dependencies
-3. **Port Conflicts**: Change the port in `package.json` if 3000 is occupied
-
-### Demo Mode
-If no API key is provided, the application runs in demo mode with pre-configured templates and responses.
+- **Authentication Errors**: Check that the Next.js Clerk environment variables match the ones present in your dashboard.
+- **Generation Timeouts**: The LLM abstractions use a structured cache and time out optimally. If timeout issues occur frequently, check the selected AI backend health or fallback rules.
+- **Database Synchronization**: Ensure the Firebase Admin configuration file represents the exact service account created within your Firebase instance.

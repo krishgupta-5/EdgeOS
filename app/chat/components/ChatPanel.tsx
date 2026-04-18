@@ -178,10 +178,10 @@ function FolderStructureViewer({ content }: { content: string }) {
 // ─────────────────────────────────────────────
 function ApiDesignViewer({ content }: { content: string }) {
   const methodColors: Record<string, { bg: string; color: string; label: string }> = {
-    GET:    { bg: "#0D2D1A", color: "#34D399", label: "GET" },
-    POST:   { bg: "#0D1F2D", color: "#60A5FA", label: "POST" },
-    PUT:    { bg: "#2D1F0D", color: "#FBBF24", label: "PUT" },
-    PATCH:  { bg: "#2D1A00", color: "#FB923C", label: "PATCH" },
+    GET: { bg: "#0D2D1A", color: "#34D399", label: "GET" },
+    POST: { bg: "#0D1F2D", color: "#60A5FA", label: "POST" },
+    PUT: { bg: "#2D1F0D", color: "#FBBF24", label: "PUT" },
+    PATCH: { bg: "#2D1A00", color: "#FB923C", label: "PATCH" },
     DELETE: { bg: "#2D0D0D", color: "#F87171", label: "DELETE" },
   };
 
@@ -694,162 +694,162 @@ export default function ChatPanel({
 
   // Load chat history on component mount
   useEffect(() => {
-  const loadChatHistory = async () => {
-    if (!isSignedIn) return;
+    const loadChatHistory = async () => {
+      if (!isSignedIn) return;
 
-    // If no sessionId prop (user is on /chat), show a blank chat — don't load history
-    if (!sessionId) {
+      // If no sessionId prop (user is on /chat), show a blank chat — don't load history
+      if (!sessionId) {
+        setMessages([]);
+        setGeneratedData(null);
+        setHasGeneratedConfig(false);
+        setIsModifyMode(false);
+        return;
+      }
+
       setMessages([]);
       setGeneratedData(null);
       setHasGeneratedConfig(false);
       setIsModifyMode(false);
-      return;
-    }
 
-    setMessages([]);
-    setGeneratedData(null);
-    setHasGeneratedConfig(false);
-    setIsModifyMode(false);
+      try {
+        const currentSessionId = sessionId;
+        const messagesResponse = await fetch(
+          `/api/chat-history?sessionId=${currentSessionId}`
+        );
+        if (!messagesResponse.ok) return;
 
-    try {
-      const currentSessionId = sessionId;
-      const messagesResponse = await fetch(
-        `/api/chat-history?sessionId=${currentSessionId}`
-      );
-      if (!messagesResponse.ok) return;
+        const messagesData = await messagesResponse.json();
+        const rawMessagesAll: any[] = messagesData?.messages || [];
 
-      const messagesData = await messagesResponse.json();
-      const rawMessagesAll: any[] = messagesData?.messages || [];
-
-      // ── Deduplicate consecutive messages with same role + content ──────
-      // Firestore can end up with duplicates when the same prompt is sent
-      // twice (e.g. quick double-press). Strip them so the UI stays clean.
-      const rawMessages: any[] = [];
-      for (const msg of rawMessagesAll) {
-        const prev = rawMessages[rawMessages.length - 1];
-        if (prev && prev.role === msg.role && prev.content === msg.content) {
-          continue; // skip duplicate
+        // ── Deduplicate consecutive messages with same role + content ──────
+        // Firestore can end up with duplicates when the same prompt is sent
+        // twice (e.g. quick double-press). Strip them so the UI stays clean.
+        const rawMessages: any[] = [];
+        for (const msg of rawMessagesAll) {
+          const prev = rawMessages[rawMessages.length - 1];
+          if (prev && prev.role === msg.role && prev.content === msg.content) {
+            continue; // skip duplicate
+          }
+          rawMessages.push(msg);
         }
-        rawMessages.push(msg);
-      }
 
-      // ── Find the latest complete result blob ──────────────────────────────
-      // We want the LAST assistant message that contains a full result
-      // (yaml + docker + ...) so we can reconstruct the UI state.
-      let latestResult: any = null;
-      for (const msg of rawMessages) {
-        if (msg.role === "assistant") {
-          try {
-            const parsed = JSON.parse(msg.content);
-            if (parsed.yaml && parsed.docker) {
-              latestResult = parsed;
+        // ── Find the latest complete result blob ──────────────────────────────
+        // We want the LAST assistant message that contains a full result
+        // (yaml + docker + ...) so we can reconstruct the UI state.
+        let latestResult: any = null;
+        for (const msg of rawMessages) {
+          if (msg.role === "assistant") {
+            try {
+              const parsed = JSON.parse(msg.content);
+              if (parsed.yaml && parsed.docker) {
+                latestResult = parsed;
+              }
+            } catch {
+              // plain text assistant message — skip
             }
+          }
+        }
+
+        // ── Build the visible message list ────────────────────────────────────
+        const historyMessages: Message[] = [];
+        // Track config state locally during reconstruction — we can't rely on
+        // the React state `hasGeneratedConfig` because it's still `false` here.
+        let localHasConfig = false;
+
+        for (const msg of rawMessages) {
+          const ts = new Date(
+            msg.createdAt?.toDate?.() || msg.createdAt
+          ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+          if (msg.role === "user") {
+            historyMessages.push({
+              id: msg.id,
+              role: "user",
+              content: msg.content,
+              timestamp: ts,
+            });
+            continue;
+          }
+
+          // ── Assistant message ─────────────────────────────────────────────
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(msg.content);
           } catch {
-            // plain text assistant message — skip
-          }
-        }
-      }
-
-      // ── Build the visible message list ────────────────────────────────────
-      const historyMessages: Message[] = [];
-      // Track config state locally during reconstruction — we can't rely on
-      // the React state `hasGeneratedConfig` because it's still `false` here.
-      let localHasConfig = false;
-
-      for (const msg of rawMessages) {
-        const ts = new Date(
-          msg.createdAt?.toDate?.() || msg.createdAt
-        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-        if (msg.role === "user") {
-          historyMessages.push({
-            id: msg.id,
-            role: "user",
-            content: msg.content,
-            timestamp: ts,
-          });
-          continue;
-        }
-
-        // ── Assistant message ─────────────────────────────────────────────
-        let parsed: any = null;
-        try {
-          parsed = JSON.parse(msg.content);
-        } catch {
-          // plain text — render verbatim
-        }
-
-        if (!parsed || !parsed.yaml) {
-          // Not a result blob — just a normal assistant text message
-          historyMessages.push({
-            id: msg.id,
-            role: "assistant",
-            content: msg.content,
-            timestamp: ts,
-          });
-          continue;
-        }
-
-        // This is a result blob containing ALL generated artifacts.
-        // Expand every available artifact into its own message so the
-        // full generation history is visible when loading a past chat.
-        const allSteps: Step[] = ["config", "docker", "pipeline", "docs", "folder", "db", "apiDesign", "testingPlan"];
-
-        // Map steps to their data presence check
-        const stepHasData = (s: Step): boolean => {
-          switch (s) {
-            case "config": return !!parsed.yaml;
-            case "docker": return !!parsed.docker;
-            case "pipeline": return !!parsed.pipeline;
-            case "docs": return !!parsed.markdown;
-            case "folder": return !!parsed.folderStructure;
-            case "db": return !!parsed.dbSchema;
-            case "apiDesign": return !!parsed.apiDesign;
-            case "testingPlan": return !!parsed.testingPlan;
-            default: return false;
-          }
-        };
-
-        let stepIndex = 0;
-        for (const step of allSteps) {
-          if (!stepHasData(step)) continue;
-
-          const isFirstConfig = step === "config" && !localHasConfig;
-          const { content, file } = buildAssistantMessage(
-            step,
-            parsed,
-            isFirstConfig,
-            false
-          );
-
-          if (step === "config" && isFirstConfig) {
-            localHasConfig = true;
+            // plain text — render verbatim
           }
 
-          historyMessages.push({
-            id: `${msg.id}-${step}`,
-            role: "assistant",
-            content,
-            timestamp: ts,
-            file,
-          });
-          stepIndex++;
+          if (!parsed || !parsed.yaml) {
+            // Not a result blob — just a normal assistant text message
+            historyMessages.push({
+              id: msg.id,
+              role: "assistant",
+              content: msg.content,
+              timestamp: ts,
+            });
+            continue;
+          }
+
+          // This is a result blob containing ALL generated artifacts.
+          // Expand every available artifact into its own message so the
+          // full generation history is visible when loading a past chat.
+          const allSteps: Step[] = ["config", "docker", "pipeline", "docs", "folder", "db", "apiDesign", "testingPlan"];
+
+          // Map steps to their data presence check
+          const stepHasData = (s: Step): boolean => {
+            switch (s) {
+              case "config": return !!parsed.yaml;
+              case "docker": return !!parsed.docker;
+              case "pipeline": return !!parsed.pipeline;
+              case "docs": return !!parsed.markdown;
+              case "folder": return !!parsed.folderStructure;
+              case "db": return !!parsed.dbSchema;
+              case "apiDesign": return !!parsed.apiDesign;
+              case "testingPlan": return !!parsed.testingPlan;
+              default: return false;
+            }
+          };
+
+          let stepIndex = 0;
+          for (const step of allSteps) {
+            if (!stepHasData(step)) continue;
+
+            const isFirstConfig = step === "config" && !localHasConfig;
+            const { content, file } = buildAssistantMessage(
+              step,
+              parsed,
+              isFirstConfig,
+              false
+            );
+
+            if (step === "config" && isFirstConfig) {
+              localHasConfig = true;
+            }
+
+            historyMessages.push({
+              id: `${msg.id}-${step}`,
+              role: "assistant",
+              content,
+              timestamp: ts,
+              file,
+            });
+            stepIndex++;
+          }
         }
+
+        setMessages(historyMessages);
+
+        if (latestResult) {
+          setGeneratedData(latestResult);
+          setHasGeneratedConfig(true);
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
       }
+    };
 
-      setMessages(historyMessages);
-
-      if (latestResult) {
-        setGeneratedData(latestResult);
-        setHasGeneratedConfig(true);
-      }
-    } catch (error) {
-      console.error("Failed to load chat history:", error);
-    }
-  };
-
-  loadChatHistory();
-}, [sessionId, isSignedIn]);
+    loadChatHistory();
+  }, [sessionId, isSignedIn]);
 
   const detectStep = (text: string, forceHasConfig = false): Step => {
     const lower = text.toLowerCase();
@@ -1179,7 +1179,7 @@ export default function ChatPanel({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    
+
     // Auto-resize magic
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto"; // Reset height to recalculate
@@ -1582,7 +1582,7 @@ export default function ChatPanel({
                 title={tokenQuota.exhausted ? `Resets at ${new Date(tokenQuota.resetAt).toLocaleTimeString()}` : `${tokenQuota.tokensRemaining.toLocaleString()} remaining`}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "10px", color: tokenQuota.exhausted ? "#ff6b6b" : "#666", letterSpacing: "0.5px" }}>
-                  <span>{tokenQuota.exhausted ? "BURNED" : "TOKENS"}</span>
+                  <span>{tokenQuota.exhausted ? "BURNED" : "TOKENS"}&nbsp;</span>
                   <span style={{ color: tokenQuota.exhausted ? "#ff6b6b" : "#A0A0A0" }}>
                     {tokenQuota.tokensUsed.toLocaleString()} / {tokenQuota.tokensLimit.toLocaleString()}
                   </span>
@@ -1702,44 +1702,44 @@ export default function ChatPanel({
                               (m) => m.role === "user" && m.content === option
                             );
                             return (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                if (isClicked) return;
-                                if (option.toLowerCase() === "modify") {
-                                  setIsModifyMode(true);
-                                  setMessages((prev) => [
-                                    ...prev,
-                                    {
-                                      id: Date.now().toString(),
-                                      role: "assistant",
-                                      content: "Tell me what you want to change in the configuration.",
-                                      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                                    },
-                                  ]);
-                                  return;
-                                }
-                                handleSend(option);
-                              }}
-                              style={{
-                                padding: "8px 16px",
-                                background: isClicked ? "transparent" : "#080808",
-                                border: `1px solid ${isClicked ? "#222" : "#333"}`,
-                                color: isClicked ? "#555" : "#EAEAEA",
-                                fontSize: "11px",
-                                fontFamily: '"Geist Mono", monospace',
-                                cursor: isClicked ? "default" : "pointer",
-                                transition: "all 0.2s ease",
-                                borderRadius: "4px",
-                                textTransform: "uppercase",
-                                fontWeight: 500,
-                                opacity: isClicked ? 0.7 : 1,
-                              }}
-                              onMouseEnter={(e) => { if (!isClicked) { (e.currentTarget as HTMLButtonElement).style.background = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.color = "#000"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#EAEAEA"; } }}
-                              onMouseLeave={(e) => { if (!isClicked) { (e.currentTarget as HTMLButtonElement).style.background = "#080808"; (e.currentTarget as HTMLButtonElement).style.color = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#333"; } }}
-                            >
-                              {option}
-                            </button>
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  if (isClicked) return;
+                                  if (option.toLowerCase() === "modify") {
+                                    setIsModifyMode(true);
+                                    setMessages((prev) => [
+                                      ...prev,
+                                      {
+                                        id: Date.now().toString(),
+                                        role: "assistant",
+                                        content: "Tell me what you want to change in the configuration.",
+                                        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                                      },
+                                    ]);
+                                    return;
+                                  }
+                                  handleSend(option);
+                                }}
+                                style={{
+                                  padding: "8px 16px",
+                                  background: isClicked ? "transparent" : "#080808",
+                                  border: `1px solid ${isClicked ? "#222" : "#333"}`,
+                                  color: isClicked ? "#555" : "#EAEAEA",
+                                  fontSize: "11px",
+                                  fontFamily: '"Geist Mono", monospace',
+                                  cursor: isClicked ? "default" : "pointer",
+                                  transition: "all 0.2s ease",
+                                  borderRadius: "4px",
+                                  textTransform: "uppercase",
+                                  fontWeight: 500,
+                                  opacity: isClicked ? 0.7 : 1,
+                                }}
+                                onMouseEnter={(e) => { if (!isClicked) { (e.currentTarget as HTMLButtonElement).style.background = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.color = "#000"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#EAEAEA"; } }}
+                                onMouseLeave={(e) => { if (!isClicked) { (e.currentTarget as HTMLButtonElement).style.background = "#080808"; (e.currentTarget as HTMLButtonElement).style.color = "#EAEAEA"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#333"; } }}
+                              >
+                                {option}
+                              </button>
                             );
                           })}
                         </div>
